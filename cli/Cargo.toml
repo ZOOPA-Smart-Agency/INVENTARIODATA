@@ -1,0 +1,13 @@
+[package]
+name = "inventario-registro-cli"
+description = "Command-line version of the inventory device app, with no window (for servers without a desktop)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "inventario-registro-cli"
+path = "src/main.rs"
+
+[dependencies]
+inventario-core = { path = "../core" }

@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Registro de equipos</title>
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <main>
+    <header class="head">
+      <div class="mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="22" height="22"><path d="M5 6.5A1.5 1.5 0 0 1 6.5 5h11A1.5 1.5 0 0 1 19 6.5V15H5z" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M3 17.5h18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M9.2 10.2l2 2 3.6-3.8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <div>
+        <h1 data-t="title"></h1>
+        <p class="muted" data-t="subtitle"></p>
+      </div>
+    </header>
+
+    <!-- 1. server and account -->
+    <section class="card" id="stepConnect">
+      <form id="connectForm" novalidate>
+        <label><span data-t="server"></span>
+          <input id="server" type="text" inputmode="url" autocomplete="url" autocapitalize="off" spellcheck="false" required data-ph="server_ph">
+        </label>
+        <label><span data-t="email"></span>
+          <input id="email" type="email" autocomplete="username" autocapitalize="off" spellcheck="false" required>
+        </label>
+        <label><span data-t="password"></span>
+          <input id="password" type="password" autocomplete="current-password" required>
+        </label>
+        <p class="error" id="connectError" role="alert" hidden></p>
+        <button class="primary" id="connectBtn" type="submit" data-t="continue"></button>
+        <p class="hint" data-t="account_hint"></p>
+      </form>
+    </section>
+
+    <!-- 2. a server with its own certificate -->
+    <section class="card" id="stepTrust" hidden>
+      <h2 data-t="trust_title"></h2>
+      <p data-t="trust_text"></p>
+      <p class="label" id="fpLabel"></p>
+      <code class="fp" id="fingerprint"></code>
+      <p class="hint" data-t="trust_hint"></p>
+      <p class="error" id="trustError" role="alert" hidden></p>
+      <div class="row">
+        <button type="button" id="trustCancel" data-t="cancel"></button>
+        <button type="button" class="primary" id="trustBtn" data-t="trust"></button>
+      </div>
+    </section>
+
+    <!-- 3. what will be sent -->
+    <section class="card" id="stepReview" hidden>
+      <div class="signed muted" id="signedAs"></div>
+      <h2 data-t="review_title"></h2>
+      <div id="loading" class="loading"><span class="spinner"></span><span data-t="reading"></span></div>
+      <dl id="facts" class="facts"></dl>
+      <ul id="warnings" class="warnings"></ul>
+      <label id="serialBox" hidden><span data-t="serial_manual"></span>
+        <input id="serialInput" type="text" autocapitalize="characters" spellcheck="false">
+      </label>
+      <div id="existing" class="notice info" hidden></div>
+      <div id="newFields" hidden>
+        <p class="notice info" data-t="new_device"></p>
+        <div class="grid">
+          <label><span data-t="tag"></span><input id="tag" type="text" spellcheck="false"></label>
+          <label><span data-t="type"></span><select id="type"></select></label>
+          <label class="wide"><span data-t="location"></span><select id="location"></select></label>
+        </div>
+      </div>
+      <p class="error" id="sendError" role="alert" hidden></p>
+      <div class="row">
+        <button type="button" id="backBtn" data-t="sign_out"></button>
+        <button type="button" class="primary" id="sendBtn" disabled data-t="add"></button>
+      </div>
+    </section>
+
+    <!-- 4. done -->
+    <section class="card done" id="stepDone" hidden>
+      <div class="tick" aria-hidden="true"><svg viewBox="0 0 24 24" width="34" height="34"><path d="M6 12.5l4 4 8-9" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      <h2 id="doneTitle"></h2>
+      <p class="muted" id="doneText"></p>
+      <div class="row center">
+        <button type="button" id="openBtn" data-t="open"></button>
+        <button type="button" class="primary" id="closeBtn" data-t="close"></button>
+      </div>
+    </section>
+
+    <footer class="foot muted">
+      <span id="version"></span>
+      <select id="lang" aria-label="Idioma / Language">
+        <option value="es">Español</option>
+        <option value="ca">Català</option>
+        <option value="en">English</option>
+      </select>
+    </footer>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>
