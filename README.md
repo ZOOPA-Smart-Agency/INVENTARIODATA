@@ -4,7 +4,7 @@ A small app that adds the computer it runs on to the company's IT inventory ([IN
 
 It reads the serial number, maker and model, processor, memory, drives, graphics, screen size, battery health, operating system, disk encryption (FileVault, BitLocker, LUKS), Active Directory membership and network cards. For a computer that is new to the inventory, it also asks for the asset tag, device type and location (filled in with sensible choices). For one that is already there, only its hardware and software details change: status, location, assignment, purchase data and notes stay as they are.
 
-It needs inventory version 1.2.0 or later, and an account with the technician or administrator role.
+It needs inventory version 1.2.0 or later (1.2.1 also saves the Wi-Fi generation and Bluetooth version), and an account with the technician or administrator role.
 
 It does nothing in the background and never updates itself: it runs while it is open and stops when it is closed. The password is only used to sign in, and is never saved.
 
