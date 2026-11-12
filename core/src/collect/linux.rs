@@ -16,6 +16,8 @@ pub struct NetDevice {
     pub mac: String,
     pub wireless: bool,
     pub physical: bool,
+    /// "0000:00:14.3" for cards on the PCI bus, to find their name in lspci
+    pub pci_slot: String,
 }
 
 /// What the system said, as given to `parse`.
@@ -36,6 +38,10 @@ pub struct Inputs {
     pub edid: Option<Vec<u8>>,
     pub hostname: String,
     pub is_root: bool,
+    /// `iw phy`: what the Wi-Fi card supports
+    pub iw: String,
+    /// `hciconfig -a`: the Bluetooth radio's version
+    pub hci: String,
 }
 
 #[cfg(target_os = "linux")]
@@ -56,6 +62,8 @@ pub fn collect() -> Facts {
                 mac: read(&format!("{}/address", path.display())).unwrap_or_default(),
                 wireless: path.join("wireless").exists() || path.join("phy80211").exists(),
                 physical: path.join("device").exists(),
+                pci_slot: read(&format!("{}/device/uevent", path.display())).unwrap_or_default().lines()
+                    .find_map(|l| l.strip_prefix("PCI_SLOT_NAME=").map(String::from)).unwrap_or_default(),
             });
         }
     }
@@ -87,6 +95,8 @@ pub fn collect() -> Facts {
         edid,
         hostname: util::hostname(),
         is_root,
+        iw: run("iw", &["phy"]).unwrap_or_default(),
+        hci: run("hciconfig", &["-a"]).unwrap_or_default(),
     })
 }
 
@@ -240,7 +250,16 @@ pub fn parse(i: &Inputs) -> Facts {
         if !net.physical || net.name == "lo" {
             continue;
         }
-        f.nics.push(Nic { kind: if net.wireless { "wifi" } else { "eth" }.into(), model: String::new(), mac: net.mac.clone() });
+        let mut nic = Nic { kind: if net.wireless { "wifi" } else { "eth" }.into(), mac: net.mac.clone(), ..Nic::default() };
+        nic.model = pci_name(&i.lspci, &net.pci_slot);
+        if net.wireless {
+            nic.wifi_gen = wifi_gen_from_iw(&i.iw);
+            if nic.wifi_gen.is_empty() {
+                nic.wifi_gen = util::wifi_gen_from_name(&nic.model);
+            }
+            nic.bt_ver = bt_from_hciconfig(&i.hci);
+        }
+        f.nics.push(nic);
     }
 
     let (distro, version) = distro_and_version(&i.os_release);
@@ -261,6 +280,53 @@ pub fn parse(i: &Inputs) -> Facts {
         }
     }
     f
+}
+
+/// A PCI card's name from `lspci -mm`: "Intel Wi-Fi 6E AX211 160MHz", "Realtek RTL8111/8168/8411 Gigabit Ethernet".
+pub fn pci_name(lspci: &str, slot: &str) -> String {
+    let slot = slot.strip_prefix("0000:").unwrap_or(slot);
+    if slot.is_empty() {
+        return String::new();
+    }
+    let Some(line) = lspci.lines().find(|l| l.split_whitespace().next() == Some(slot)) else { return String::new() };
+    let quoted: Vec<&str> = line.split('"').skip(1).step_by(2).collect();
+    let (Some(vendor), Some(device)) = (quoted.get(1), quoted.get(2)) else { return String::new() };
+    let brand = util::manufacturer(vendor.split_whitespace().next().unwrap_or(vendor));
+    let brand = match brand.as_str() { "Advanced" => "AMD".to_string(), other => other.replace("Corporation", "").trim().to_string() };
+    // Intel names the chip itself in the subsystem ("Wi-Fi 6E AX211 160MHz"), others in brackets or the device name
+    let sub_vendor = quoted.get(3).copied().unwrap_or("");
+    let sub_device = quoted.get(4).copied().unwrap_or("");
+    let model = if let Some(inside) = device.split('[').nth(1) {
+        inside.trim_end_matches(']').to_string()
+    } else if sub_vendor == *vendor && !sub_device.is_empty() && !sub_device.starts_with("Device ") {
+        sub_device.to_string()
+    } else {
+        device.to_string()
+    };
+    let model = model.replace(" PCI Express", "").replace(" Controller", "");
+    util::clean(&format!("{brand} {model}"))
+}
+
+/// `iw phy`: EHT means Wi-Fi 7, HE Wi-Fi 6 (6E with the 6 GHz band, "Band 4"), VHT Wi-Fi 5, HT Wi-Fi 4.
+pub fn wifi_gen_from_iw(iw: &str) -> String {
+    if iw.contains("EHT Iftypes") { "7" }
+    else if iw.contains("HE Iftypes") && iw.contains("Band 4:") { "6E" }
+    else if iw.contains("HE Iftypes") { "6" }
+    else if iw.contains("VHT Capabilities") { "5" }
+    else if iw.contains("HT Capabilities") { "4" }
+    else { "" }.into()
+}
+
+/// `hciconfig -a`: "LMP Version: 5.3 (0xc)" -> "5.3".
+pub fn bt_from_hciconfig(hci: &str) -> String {
+    for key in ["LMP Version:", "HCI Version:"] {
+        if let Some(v) = hci.lines().find_map(|l| l.split(key).nth(1)).and_then(|v| v.split_whitespace().next()) {
+            if v.len() == 3 && v.as_bytes()[1] == b'.' && v.chars().filter(|c| c.is_ascii_digit()).count() == 2 {
+                return v.to_string();
+            }
+        }
+    }
+    String::new()
 }
 
 /// Every device type in the lsblk tree (to spot "crypt", which LUKS uses).

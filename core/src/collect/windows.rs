@@ -18,6 +18,9 @@ try { $bitlocker = (New-Object -ComObject Shell.Application).NameSpace($env:Syst
 $full = (Get-CimInstance -Namespace root\wmi -ClassName BatteryFullChargedCapacity | Select-Object -First 1).FullChargedCapacity
 $design = (Get-CimInstance -Namespace root\wmi -ClassName BatteryStaticData | Select-Object -First 1).DesignedCapacity
 $internal = @(Get-CimInstance -Namespace root\wmi -ClassName WmiMonitorConnectionParams | Where-Object { $_.VideoOutputTechnology -eq 2147483648 -or $_.VideoOutputTechnology -eq -2147483648 } | ForEach-Object { $_.InstanceName })
+# Wi-Fi standards the card supports ("802.11ax", the same in every language) and the Bluetooth radio's LMP version
+$wlan = (netsh wlan show drivers) -join "`n"
+$lmp = Get-PnpDevice -Class Bluetooth -PresentOnly | ForEach-Object { (Get-PnpDeviceProperty -InstanceId $_.InstanceId -KeyName '{A92F26CA-EDA7-4B1D-9DB2-27B68AA5A2EB} 4').Data } | Where-Object { $_ -ne $null } | Select-Object -First 1
 $screen = Get-CimInstance -Namespace root\wmi -ClassName WmiMonitorBasicDisplayParams | Where-Object { $internal -contains $_.InstanceName } | Select-Object -First 1
 [pscustomobject]@{
   hostname = $env:COMPUTERNAME
@@ -32,6 +35,8 @@ $screen = Get-CimInstance -Namespace root\wmi -ClassName WmiMonitorBasicDisplayP
   nics = @(Get-NetAdapter -Physical | ForEach-Object { [pscustomobject]@{ Description = $_.InterfaceDescription; MacAddress = $_.MacAddress; Media = [string]$_.PhysicalMediaType } })
   os = [pscustomobject]@{ Caption = $os.Caption; DisplayVersion = $cv.DisplayVersion; ReleaseId = $cv.ReleaseId; Build = $os.BuildNumber }
   bitlocker = $bitlocker
+  wlan = $wlan
+  lmp = $lmp
   battery = [pscustomobject]@{ Full = $full; Design = $design }
   screen = if ($screen) { [pscustomobject]@{ Width = $screen.MaxHorizontalImageSize; Height = $screen.MaxVerticalImageSize } } else { $null }
 } | ConvertTo-Json -Depth 4 -Compress
@@ -122,7 +127,18 @@ pub fn parse(j: &Value) -> Facts {
     for nic in list(&j["nics"]) {
         let media = text(&nic["Media"]).to_lowercase();
         let kind = if media.contains("802.11") || media.contains("wireless") { "wifi" } else if media.contains("802.3") { "eth" } else { continue };
-        f.nics.push(Nic { kind: kind.into(), model: util::clean(&text(&nic["Description"])), mac: text(&nic["MacAddress"]) });
+        let model = util::clean(&text(&nic["Description"]));
+        let mut card = Nic { kind: kind.into(), mac: text(&nic["MacAddress"]), ..Nic::default() };
+        if kind == "wifi" {
+            let wlan = text(&j["wlan"]);
+            let by_name = util::wifi_gen_from_name(&model);
+            let six_ghz = by_name == "6E" || wlan.contains("6 GHz") || wlan.contains("6GHz");
+            let by_standards = util::wifi_gen_from_standards(&wlan, six_ghz);
+            card.wifi_gen = if by_standards.is_empty() { by_name } else { by_standards };
+            card.bt_ver = num(&j["lmp"]).map(|n| util::bt_from_lmp(n as i64)).unwrap_or_default();
+        }
+        card.model = model;
+        f.nics.push(card);
     }
 
     // "Microsoft Windows 11 Pro" + "23H2" -> version "11 23H2", edition "Pro"

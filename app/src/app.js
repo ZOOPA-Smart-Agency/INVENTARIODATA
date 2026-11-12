@@ -296,7 +296,11 @@ function factRows(f) {
   }
   add('f_enc', yesNo(f.encryption));
   add('f_domain', yesNo(f.domainJoined));
-  add('f_nics', (f.nics || []).map((n) => (n.type === 'wifi' ? 'Wi-Fi' : 'Ethernet') + (n.model ? ' · ' + n.model : '')).join(', '));
+  add('f_nics', (f.nics || []).map((n) => [
+    n.type === 'wifi' ? 'Wi-Fi' + (n.wifiGen ? ' ' + n.wifiGen : '') : 'Ethernet',
+    n.model,
+    n.btVer ? 'Bluetooth ' + n.btVer : '',
+  ].filter(Boolean).join(' · ')).join(', '));
   return rows;
 }
 

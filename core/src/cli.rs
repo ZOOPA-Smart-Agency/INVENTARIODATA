@@ -139,6 +139,11 @@ fn print_facts(f: &Facts) {
     if let Some(inches) = f.screen_inches { line("Screen", format!("{inches}\"")); }
     if let Some(b) = &f.battery { line("Battery", format!("{}%", b.health_pct)); }
     line("Encryption", f.encryption.clone());
+    line("Network", f.nics.iter().map(|n| {
+        let kind = if n.kind == "wifi" { format!("Wi-Fi {}", n.wifi_gen).trim().to_string() } else { "Ethernet".into() };
+        let bt = if n.bt_ver.is_empty() { String::new() } else { format!("Bluetooth {}", n.bt_ver) };
+        [kind, n.model.clone(), bt].into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join(" · ")
+    }).collect::<Vec<_>>().join(", "));
     for w in &f.warnings {
         eprintln!("note: {}", warning_text(w));
     }

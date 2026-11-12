@@ -94,6 +94,12 @@ pub struct Nic {
     pub kind: String,
     pub model: String,
     pub mac: String,
+    /// Wi-Fi only: "4", "5", "6", "6E" or "7"
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub wifi_gen: String,
+    /// Wi-Fi only: the Bluetooth version of the same chip, "5.3"
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub bt_ver: String,
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]

@@ -14,7 +14,7 @@ It does nothing in the background and never updates itself: it runs while it is 
 | Windows | 10 and 11, x64 and ARM | `-setup.exe` (or `.msi` for x64) |
 | Linux | Ubuntu 22.04, Debian 12, Fedora 38 and later, and similar; x64 and ARM | `.deb`, `.rpm` or `.AppImage` |
 
-Each download also has a command-line version (`inventario-registro-cli`), with no window, for servers and remote sessions.
+Windows and Linux also have a command-line version (`inventario-registro-cli_….zip`), with no window, for servers and remote sessions. On macOS, the app itself works as the command line (see below).
 
 ## Unsigned builds
 

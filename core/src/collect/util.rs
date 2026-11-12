@@ -171,6 +171,34 @@ pub fn inches_from_cm(width_cm: f64, height_cm: f64) -> Option<f64> {
     Some(if (nearest - inches).abs() <= 0.25 { nearest } else { (inches * 10.0).round() / 10.0 })
 }
 
+/// Wi-Fi generation from the standards a card supports, however the system writes them ("802.11 a/b/g/n/ac/ax",
+/// "802.11ax 802.11ac"): "7", "6E" (Wi-Fi 6 with the 6 GHz band), "6", "5", "4" or "".
+pub fn wifi_gen_from_standards(standards: &str, six_ghz: bool) -> String {
+    // only what follows "802.11": "ax" (Windows, one per standard) or "a/b/g/n/ac/ax" (macOS)
+    let lower = standards.to_lowercase();
+    let tokens: Vec<String> = lower.split("802.11").skip(1)
+        .flat_map(|part| part.trim_start().chars().take_while(|c| c.is_ascii_alphanumeric() || *c == '/').collect::<String>()
+            .split('/').map(String::from).collect::<Vec<_>>())
+        .collect();
+    let has = |t: &str| tokens.iter().any(|x| x == t);
+    if has("be") { "7" } else if has("ax") && six_ghz { "6E" } else if has("ax") { "6" } else if has("ac") { "5" } else if has("n") { "4" } else { "" }.into()
+}
+
+/// Wi-Fi generation from a card's name ("Intel(R) Wi-Fi 6E AX211 160MHz", "Killer Wi-Fi 7 BE1750"), or "".
+pub fn wifi_gen_from_name(name: &str) -> String {
+    let n = format!(" {} ", name.to_lowercase().replace(['(', ')', '-'], " "));
+    if n.contains("wi fi 7") || n.contains(" be2") || n.contains(" be1") { "7" }
+    else if n.contains("wi fi 6e") || n.contains(" 6e ") || n.contains(" ax21") || n.contains(" ax411") { "6E" }
+    else if n.contains("wi fi 6") || n.contains(" ax2") || n.contains(" ax1") || n.contains("802.11ax") { "6" }
+    else if n.contains("wi fi 5") || n.contains(" ac ") || n.contains("802.11ac") { "5" }
+    else { "" }.into()
+}
+
+/// Bluetooth version from the controller's LMP version number (Bluetooth Core Specification "Assigned Numbers").
+pub fn bt_from_lmp(lmp: i64) -> String {
+    match lmp { 6 => "4.0", 7 => "4.1", 8 => "4.2", 9 => "5.0", 10 => "5.1", 11 => "5.2", 12 => "5.3", 13 => "5.4", 14 => "6.0", _ => "" }.into()
+}
+
 /// The hostname, without the domain.
 pub fn hostname() -> String {
     run("hostname", &[]).map(|h| h.trim().split('.').next().unwrap_or("").to_string()).unwrap_or_default()

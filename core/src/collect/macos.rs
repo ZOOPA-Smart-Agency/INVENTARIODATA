@@ -1,5 +1,5 @@
 //! macOS: system_profiler (hardware, memory, drives, graphics, battery), sysctl (processor), networksetup
-//! (network cards), fdesetup (FileVault), dsconfigad (Active Directory). None of them need administrator rights.
+//! (network cards; Wi-Fi chip and generation from system_profiler), fdesetup (FileVault), dsconfigad (Active Directory). None of them need administrator rights.
 
 use super::util::{self, num, number_and_unit, text};
 use crate::facts::{Battery, Cpu, Disk, Facts, Gpu, Nic, Os, Ram};
@@ -23,11 +23,18 @@ pub struct Inputs {
 #[cfg(target_os = "macos")]
 pub fn collect() -> Facts {
     use util::run;
+    // the Wi-Fi details take macOS several seconds (it looks at nearby networks), so they are read alongside the rest
+    let airport = std::thread::spawn(|| {
+        run("system_profiler", &["-json", "-detailLevel", "mini", "SPAirPortDataType"])
+            .and_then(|s| serde_json::from_str::<Value>(&s).ok())
+            .map(|v| v["SPAirPortDataType"].clone())
+            .unwrap_or(Value::Null)
+    });
     let profiler = run("system_profiler", &["-json", "SPHardwareDataType", "SPMemoryDataType", "SPNVMeDataType",
-                                            "SPSerialATADataType", "SPDisplaysDataType", "SPPowerDataType"])
+                                                "SPSerialATADataType", "SPDisplaysDataType", "SPPowerDataType"])
         .and_then(|s| serde_json::from_str(&s).ok())
         .unwrap_or(Value::Null);
-    parse(&Inputs {
+    let mut inputs = Inputs {
         profiler,
         cpu_brand: run("sysctl", &["-n", "machdep.cpu.brand_string"]).unwrap_or_default(),
         product_version: run("sw_vers", &["-productVersion"]).unwrap_or_default(),
@@ -37,7 +44,9 @@ pub fn collect() -> Facts {
         ioreg_battery: run("ioreg", &["-rn", "AppleSmartBattery"]).unwrap_or_default(),
         hostname: util::hostname(),
         screen_mm: builtin_screen_mm(),
-    })
+    };
+    inputs.profiler["SPAirPortDataType"] = airport.join().unwrap_or(Value::Null);
+    parse(&inputs)
 }
 
 /// The built-in screen's size in millimetres, as CoreGraphics reports it. Needs no permission. None for Macs
@@ -62,6 +71,21 @@ fn builtin_screen_mm() -> Option<(f64, f64)> {
         let size = unsafe { CGDisplayScreenSize(*d) };
         (size.width, size.height)
     }).filter(|(w, h)| *w > 0.0 && *h > 0.0)
+}
+
+/// "spairport_wireless_card_type_wifi (0x14C3, 0x7932)" -> "MediaTek MT7932": the maker's PCI vendor id and the chip.
+pub fn wifi_chip(card_type: &str) -> String {
+    let ids: Vec<String> = card_type.split(['(', ')', ',']).map(|p| p.trim().to_lowercase()).filter(|p| p.starts_with("0x")).collect();
+    let (Some(vendor), Some(device)) = (ids.first(), ids.get(1)) else { return String::new() };
+    let chip = device.trim_start_matches("0x").to_uppercase();
+    match vendor.as_str() {
+        "0x14e4" => format!("Broadcom BCM{chip}"),
+        "0x14c3" => format!("MediaTek MT{chip}"),
+        "0x106b" => "Apple".into(),
+        "0x8086" => "Intel".into(),
+        "0x168c" | "0x17cb" => "Qualcomm".into(),
+        _ => String::new(),
+    }
 }
 
 /// The marketing name for each macOS version number; newer versions are shown by number.
@@ -202,10 +226,14 @@ pub fn parse(input: &Inputs) -> Facts {
     };
 
     // network cards: built-in Wi-Fi and Ethernet ports
+    let airport: Vec<Value> = items(&input.profiler, "SPAirPortDataType").into_iter()
+        .flat_map(|entry| util::list(&entry["spairport_airport_interfaces"]).into_iter().cloned().collect::<Vec<_>>())
+        .collect();
     for block in input.hardware_ports.split("\n\n") {
         let field = |name: &str| block.lines().find_map(|l| l.strip_prefix(name).map(|v| v.trim().to_string())).unwrap_or_default();
         let port = field("Hardware Port:");
         let mac = field("Ethernet Address:");
+        let device = field("Device:");
         let kind = if port.contains("Wi-Fi") || port.contains("AirPort") {
             "wifi"
         } else if port == "Ethernet" || port.starts_with("Ethernet ") || port.contains("Ethernet Adapter") && !port.contains("Thunderbolt") {
@@ -213,7 +241,15 @@ pub fn parse(input: &Inputs) -> Facts {
         } else {
             continue; // Thunderbolt bridges, Bluetooth, iPhone USB, VPNs
         };
-        f.nics.push(Nic { kind: kind.into(), model: String::new(), mac });
+        let mut nic = Nic { kind: kind.into(), mac, ..Nic::default() };
+        if kind == "wifi" {
+            if let Some(card) = airport.iter().find(|c| text(&c["_name"]) == device).or_else(|| airport.first()) {
+                let six_ghz = util::list(&card["spairport_supported_channels"]).iter().any(|c| text(c).contains("6GHz"));
+                nic.wifi_gen = util::wifi_gen_from_standards(&text(&card["spairport_supported_phymodes"]), six_ghz);
+                nic.model = wifi_chip(&text(&card["spairport_wireless_card_type"]));
+            }
+        }
+        f.nics.push(nic);
     }
     f
 }

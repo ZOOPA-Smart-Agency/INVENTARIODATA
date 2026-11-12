@@ -30,6 +30,8 @@ fn windows_lenovo_laptop() {
         ],
         "os": {"Caption": "Microsoft Windows 11 Pro", "DisplayVersion": "23H2", "ReleaseId": "2009", "Build": "22631"},
         "bitlocker": 1,
+        "wlan": "Interface name: Wi-Fi\n    Driver : Intel(R) Wi-Fi 6E AX211 160MHz\n    Radio types supported : 802.11b 802.11g 802.11n 802.11a 802.11ac 802.11ax\n    Wireless Display Supported: Yes",
+        "lmp": 12,
         "battery": {"Full": 47520, "Design": 52500},
         "screen": {"Width": 31, "Height": 17}
     });
@@ -55,7 +57,9 @@ fn windows_lenovo_laptop() {
     assert_eq!(f.nics.len(), 2, "Bluetooth is left out");
     assert_eq!(f.nics[0].mac, "A4:C3:F0:12:34:56");
     assert_eq!(f.nics[0].kind, "wifi");
+    assert_eq!((f.nics[0].wifi_gen.as_str(), f.nics[0].bt_ver.as_str()), ("6E", "5.3"), "6E from the card's name");
     assert_eq!(f.nics[1].kind, "eth");
+    assert_eq!(f.nics[1].wifi_gen, "", "only Wi-Fi has a generation");
     let os = f.os.as_ref().unwrap();
     assert_eq!((os.family.as_str(), os.version.as_str(), os.edition.as_str()), ("win", "11 23H2", "Pro"));
     assert_eq!(f.encryption, "yes");
@@ -122,7 +126,12 @@ fn macos_intel_macbook_pro() {
             {"sppci_model": "Intel UHD Graphics 630", "spdisplays_vendor": "Intel"},
             {"sppci_model": "Radeon Pro 560X", "spdisplays_vendor": "sppci_vendor_amd", "spdisplays_vram": "4 GB"}
         ],
-        "SPPowerDataType": [{"sppower_battery_health_info": {"sppower_battery_health_maximum_capacity": "87%"}}]
+        "SPPowerDataType": [{"sppower_battery_health_info": {"sppower_battery_health_maximum_capacity": "87%"}}],
+        "SPAirPortDataType": [{"spairport_airport_interfaces": [
+            {"_name": "en0", "spairport_supported_phymodes": "802.11 a/b/g/n/ac", "spairport_supported_channels": ["1 (2GHz)", "36 (5GHz)"],
+             "spairport_wireless_card_type": "spairport_wireless_card_type_wifi (0x14E4, 0x7BF)"},
+            {"_name": "awdl0"}
+        ]}]
     });
     let mut f = macos::parse(&macos::Inputs {
         profiler,
@@ -153,6 +162,7 @@ fn macos_intel_macbook_pro() {
     assert_eq!(f.domain_joined, "no");
     assert_eq!(f.nics.len(), 1, "only the built-in Wi-Fi; USB adapters and bridges are left out");
     assert_eq!(f.nics[0].mac, "3C:22:FB:01:02:03");
+    assert_eq!((f.nics[0].model.as_str(), f.nics[0].wifi_gen.as_str()), ("Broadcom BCM7BF", "5"));
 }
 
 #[test]
@@ -197,12 +207,12 @@ fn ubuntu_inputs(is_root: bool) -> linux::Inputs {
             {"name": "sda", "size": 32010928128u64, "rota": true, "tran": "usb", "type": "disk", "rm": true},
             {"name": "loop0", "size": 4096, "rota": false, "tran": null, "type": "loop", "rm": false}
         ]}),
-        lspci: "00:02.0 \"VGA compatible controller\" \"Intel Corporation\" \"Raptor Lake-P [Iris Xe Graphics]\" -r04 \"Dell\" \"Device 0c0d\"\n00:14.3 \"Network controller\" \"Intel Corporation\" \"Raptor Lake PCH CNVi WiFi\" \"Intel Corporation\" \"Wi-Fi 6E AX211\"\n".into(),
+        lspci: "00:02.0 \"VGA compatible controller\" \"Intel Corporation\" \"Raptor Lake-P [Iris Xe Graphics]\" -r04 \"Dell\" \"Device 0c0d\"\n00:14.3 \"Network controller\" \"Intel Corporation\" \"Raptor Lake PCH CNVi WiFi\" -r01 \"Intel Corporation\" \"Wi-Fi 6E AX211 160MHz\"\n00:1f.6 \"Ethernet controller\" \"Intel Corporation\" \"Ethernet Connection (16) I219-LM\" -r01 \"Dell\" \"Device 0c0d\"\n".into(),
         nets: vec![
-            linux::NetDevice { name: "lo".into(), mac: "00:00:00:00:00:00".into(), wireless: false, physical: false },
-            linux::NetDevice { name: "wlp0s20f3".into(), mac: "a4:c3:f0:aa:bb:cc".into(), wireless: true, physical: true },
-            linux::NetDevice { name: "enp0s31f6".into(), mac: "8c:8c:aa:dd:ee:ff".into(), wireless: false, physical: true },
-            linux::NetDevice { name: "docker0".into(), mac: "02:42:ac:11:00:01".into(), wireless: false, physical: false },
+            linux::NetDevice { name: "lo".into(), mac: "00:00:00:00:00:00".into(), wireless: false, physical: false, pci_slot: String::new() },
+            linux::NetDevice { name: "wlp0s20f3".into(), mac: "a4:c3:f0:aa:bb:cc".into(), wireless: true, physical: true, pci_slot: "0000:00:14.3".into() },
+            linux::NetDevice { name: "enp0s31f6".into(), mac: "8c:8c:aa:dd:ee:ff".into(), wireless: false, physical: true, pci_slot: "0000:00:1f.6".into() },
+            linux::NetDevice { name: "docker0".into(), mac: "02:42:ac:11:00:01".into(), wireless: false, physical: false, pci_slot: String::new() },
         ],
         os_release: "PRETTY_NAME=\"Ubuntu 24.04.1 LTS\"\nNAME=\"Ubuntu\"\nVERSION_ID=\"24.04\"\nVERSION=\"24.04.1 LTS (Noble Numbat)\"\nID=ubuntu\n".into(),
         realm: None,
@@ -210,6 +220,8 @@ fn ubuntu_inputs(is_root: bool) -> linux::Inputs {
         edid: Some({ let mut e = vec![0u8; 128]; e[21] = 31; e[22] = 17; e }),
         hostname: "dell-ana".into(),
         is_root,
+        iw: "Wiphy phy0\n\tBand 1:\n\t\tHT Capabilities: 0x1ef\n\t\tHE Iftypes: managed\n\tBand 2:\n\t\tVHT Capabilities (0x039071f6):\n\tBand 4:\n\t\tHE Iftypes: managed\n".into(),
+        hci: "hci0:\tType: Primary  Bus: USB\n\tHCI Version: 5.3 (0xc)  Revision: 0x0\n\tLMP Version: 5.3 (0xc)  Subversion: 0x0\n".into(),
         ..Default::default()
     }
 }
@@ -229,8 +241,9 @@ fn linux_dell_as_root() {
     assert_eq!((f.disks[0].gb, f.disks[0].connector.as_str()), (512.0, "NVMe"));
     assert_eq!(f.gpus.len(), 1, "network controllers are not graphics");
     assert_eq!((f.gpus[0].name.as_str(), f.gpus[0].kind.as_str()), ("Intel Iris Xe Graphics", "integrated"));
-    assert_eq!(f.nics.iter().map(|n| (n.kind.as_str(), n.mac.as_str())).collect::<Vec<_>>(),
-               vec![("wifi", "A4:C3:F0:AA:BB:CC"), ("eth", "8C:8C:AA:DD:EE:FF")]);
+    assert_eq!(f.nics.iter().map(|n| (n.kind.as_str(), n.mac.as_str(), n.model.as_str(), n.wifi_gen.as_str(), n.bt_ver.as_str())).collect::<Vec<_>>(),
+               vec![("wifi", "A4:C3:F0:AA:BB:CC", "Intel Wi-Fi 6E AX211 160MHz", "6E", "5.3"),
+                    ("eth", "8C:8C:AA:DD:EE:FF", "Intel Ethernet Connection (16) I219-LM", "", "")]);
     let os = f.os.as_ref().unwrap();
     assert_eq!((os.family.as_str(), os.distro.as_str(), os.version.as_str()), ("linux", "Ubuntu", "24.04 LTS"));
     assert_eq!(f.encryption, "yes");
@@ -294,4 +307,21 @@ fn fingerprints_compare_however_written() {
     assert!(trust.matches("53 be ae dc"));
     assert!(!trust.matches("53beaedd"));
     assert!(!Trust::default().matches(""));
+}
+
+#[test]
+fn wifi_generations() {
+    use inventario_core::collect::util::{bt_from_lmp, wifi_gen_from_name, wifi_gen_from_standards};
+    assert_eq!(wifi_gen_from_standards("802.11 a/b/g/n/ac/ax", true), "6E");
+    assert_eq!(wifi_gen_from_standards("802.11 a/b/g/n/ac/ax", false), "6");
+    assert_eq!(wifi_gen_from_standards("Tipos de radio admitidos: 802.11b 802.11g 802.11n 802.11a 802.11ac", false), "5");
+    assert_eq!(wifi_gen_from_standards("802.11be 802.11ax", true), "7");
+    assert_eq!(wifi_gen_from_standards("Hosted network supported : No, maybe", false), "", "words outside 802.11 names are ignored");
+    assert_eq!(wifi_gen_from_name("Killer(R) Wi-Fi 7 BE1750x 320MHz"), "7");
+    assert_eq!(wifi_gen_from_name("Intel(R) Wi-Fi 6 AX201 160MHz"), "6");
+    assert_eq!(wifi_gen_from_name("Realtek RTL8852BE WiFi 6 802.11ax PCIe Adapter"), "6");
+    assert_eq!(wifi_gen_from_name("Realtek PCIe GbE Family Controller"), "");
+    assert_eq!(macos::wifi_chip("spairport_wireless_card_type_wifi (0x14C3, 0x7932)"), "MediaTek MT7932");
+    assert_eq!(macos::wifi_chip("Wi-Fi"), "");
+    assert_eq!((bt_from_lmp(12), bt_from_lmp(99)), ("5.3".to_string(), String::new()));
 }
