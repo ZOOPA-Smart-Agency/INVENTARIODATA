@@ -133,6 +133,7 @@ fn macos_intel_macbook_pro() {
         directory: Some(String::new()),
         ioreg_battery: String::new(),
         hostname: "MBP-de-Ana".into(),
+        screen_mm: Some((331.0, 207.0)), // what CoreGraphics reports for a 15.4" MacBook Pro
     });
     collect::tidy(&mut f);
     assert_eq!(f.serial, "C02XK3JHMD6R");
@@ -146,6 +147,7 @@ fn macos_intel_macbook_pro() {
     assert_eq!(f.gpus.len(), 2);
     assert_eq!((f.gpus[1].kind.as_str(), f.gpus[1].vram_gb), ("dedicated", Some(4.0)));
     assert_eq!(f.battery.as_ref().unwrap().health_pct, 87.0);
+    assert_eq!(f.screen_inches, Some(15.4));
     assert_eq!(f.os.as_ref().unwrap().version, "14 Sonoma");
     assert_eq!(f.encryption, "no");
     assert_eq!(f.domain_joined, "no");

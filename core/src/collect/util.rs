@@ -165,7 +165,8 @@ pub fn inches_from_cm(width_cm: f64, height_cm: f64) -> Option<f64> {
         return None; // 0 or nonsense: not a real panel size
     }
     let inches = (width_cm * width_cm + height_cm * height_cm).sqrt() / 2.54;
-    const SOLD: [f64; 22] = [10.1, 11.6, 12.0, 12.3, 12.5, 13.0, 13.3, 13.4, 13.5, 13.6, 14.0, 14.2, 14.5, 15.0, 15.3, 15.6, 16.0, 16.2, 17.0, 17.3, 18.0, 23.8];
+    const SOLD: [f64; 26] = [10.1, 11.6, 12.0, 12.3, 12.5, 13.0, 13.3, 13.4, 13.5, 13.6, 14.0, 14.2, 14.5, 15.0, 15.3, 15.4, 15.6,
+                             16.0, 16.2, 17.0, 17.3, 18.0, 21.5, 23.8, 24.0, 27.0];
     let nearest = SOLD.iter().copied().min_by(|a, b| (a - inches).abs().total_cmp(&(b - inches).abs())).unwrap();
     Some(if (nearest - inches).abs() <= 0.25 { nearest } else { (inches * 10.0).round() / 10.0 })
 }

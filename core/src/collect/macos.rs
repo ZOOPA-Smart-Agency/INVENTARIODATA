@@ -16,6 +16,8 @@ pub struct Inputs {
     pub directory: Option<String>,
     pub ioreg_battery: String,
     pub hostname: String,
+    /// width and height of the built-in screen in millimetres (from CoreGraphics), when it is on
+    pub screen_mm: Option<(f64, f64)>,
 }
 
 #[cfg(target_os = "macos")]
@@ -34,7 +36,32 @@ pub fn collect() -> Facts {
         directory: run("dsconfigad", &["-show"]),
         ioreg_battery: run("ioreg", &["-rn", "AppleSmartBattery"]).unwrap_or_default(),
         hostname: util::hostname(),
+        screen_mm: builtin_screen_mm(),
     })
+}
+
+/// The built-in screen's size in millimetres, as CoreGraphics reports it. Needs no permission. None for Macs
+/// without a built-in screen, or a laptop running with its lid closed.
+#[cfg(target_os = "macos")]
+fn builtin_screen_mm() -> Option<(f64, f64)> {
+    #[repr(C)]
+    struct Size { width: f64, height: f64 }
+    #[link(name = "CoreGraphics", kind = "framework")]
+    extern "C" {
+        fn CGGetOnlineDisplayList(max: u32, displays: *mut u32, count: *mut u32) -> i32;
+        fn CGDisplayIsBuiltin(display: u32) -> u32;
+        fn CGDisplayScreenSize(display: u32) -> Size;
+    }
+    let mut displays = [0u32; 16];
+    let mut count = 0u32;
+    // SAFETY: the list has room for 16 displays and CoreGraphics writes at most that many
+    if unsafe { CGGetOnlineDisplayList(16, displays.as_mut_ptr(), &mut count) } != 0 {
+        return None;
+    }
+    displays.iter().take(count as usize).find(|d| unsafe { CGDisplayIsBuiltin(**d) } != 0).map(|d| {
+        let size = unsafe { CGDisplayScreenSize(*d) };
+        (size.width, size.height)
+    }).filter(|(w, h)| *w > 0.0 && *h > 0.0)
 }
 
 /// The marketing name for each macOS version number; newer versions are shown by number.
@@ -160,6 +187,10 @@ pub fn parse(input: &Inputs) -> Facts {
                 f.battery = Some(Battery { health_pct: (max / design * 100.0).round().min(100.0) });
             }
         }
+    }
+
+    if let Some((w, h)) = input.screen_mm {
+        f.screen_inches = util::inches_from_cm(w / 10.0, h / 10.0);
     }
 
     f.os = Some(Os { family: "mac".into(), version: version_name(&input.product_version), ..Os::default() });

@@ -136,6 +136,7 @@ fn print_facts(f: &Facts) {
         let name = if os.distro.is_empty() { family } else { &os.distro };
         line("System", format!("{name} {} {}", os.version, os.edition));
     }
+    if let Some(inches) = f.screen_inches { line("Screen", format!("{inches}\"")); }
     if let Some(b) = &f.battery { line("Battery", format!("{}%", b.health_pct)); }
     line("Encryption", f.encryption.clone());
     for w in &f.warnings {
