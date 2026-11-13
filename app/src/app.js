@@ -32,7 +32,7 @@ const I18N = {
     e_login_locked: 'Demasiados intentos fallidos. Espera unos minutos y vuelve a probar.',
     e_err_must_change: 'Esta cuenta tiene que cambiar la contraseña en la web del inventario antes de usarla aquí.',
     e_err_forbidden: 'Esta cuenta solo puede consultar el inventario. Hace falta una cuenta de técnico o administrador.',
-    e_err_auth: 'La sesión ha caducado. Vuelve a iniciar sesión.', e_err_dup: 'Esa etiqueta ya la usa otro dispositivo.',
+    e_err_auth: 'La sesión ha caducado. Vuelve a iniciar sesión.', e_err_dup: 'Esa etiqueta, o su número identificador, ya la usa otro dispositivo.',
     e_err_required: 'Al inventario le falta algo que necesita (un número de serie, un tipo de dispositivo o una ubicación).',
     e_maintenance: 'El inventario se está restaurando o actualizando. Prueba de nuevo en unos minutos.',
     e_not_inventory: 'Esa dirección no parece un inventario.', e_err_invalid: 'El servidor no ha aceptado los datos.',
@@ -69,7 +69,7 @@ const I18N = {
     e_login_locked: 'Massa intents fallits. Espera uns minuts i torna-ho a provar.',
     e_err_must_change: "Aquest compte ha de canviar la contrasenya al web de l'inventari abans de fer-lo servir aquí.",
     e_err_forbidden: "Aquest compte només pot consultar l'inventari. Cal un compte de tècnic o administrador.",
-    e_err_auth: 'La sessió ha caducat. Torna a iniciar sessió.', e_err_dup: 'Aquesta etiqueta ja la fa servir un altre dispositiu.',
+    e_err_auth: 'La sessió ha caducat. Torna a iniciar sessió.', e_err_dup: 'Aquesta etiqueta, o el seu número identificador, ja la fa servir un altre dispositiu.',
     e_err_required: "A l'inventari li falta una cosa que necessita (un número de sèrie, un tipus de dispositiu o una ubicació).",
     e_maintenance: "L'inventari s'està restaurant o actualitzant. Torna-ho a provar d'aquí a uns minuts.",
     e_not_inventory: 'Aquesta adreça no sembla un inventari.', e_err_invalid: 'El servidor no ha acceptat les dades.',
@@ -106,7 +106,7 @@ const I18N = {
     e_login_locked: 'Too many failed attempts. Wait a few minutes and try again.',
     e_err_must_change: 'This account must change its password on the inventory website before using it here.',
     e_err_forbidden: 'This account can only view the inventory. A technician or administrator account is needed.',
-    e_err_auth: 'The session expired. Sign in again.', e_err_dup: 'That asset tag is already used by another device.',
+    e_err_auth: 'The session expired. Sign in again.', e_err_dup: 'Another device already uses that asset tag or its identification number.',
     e_err_required: 'The inventory is missing something it needs (a serial number, a device type or a location).',
     e_maintenance: 'The inventory is being restored or updated. Try again in a few minutes.',
     e_not_inventory: 'That address does not look like an inventory.', e_err_invalid: 'The server did not accept the details.',
@@ -337,7 +337,6 @@ function renderReview() {
 }
 
 function fillNewFields(o, f) {
-  if (!$('tag').dataset.filled) { $('tag').value = o.nextTag || ''; $('tag').dataset.filled = '1'; }
   const typeSel = $('type');
   const locSel = $('location');
   const keepType = typeSel.value;
@@ -346,15 +345,33 @@ function fillNewFields(o, f) {
   (o.types || []).forEach((ty) => typeSel.appendChild(new Option(name(ty), ty.id)));
   locSel.textContent = '';
   (o.locations || []).forEach((l) => locSel.appendChild(new Option(name(l), l.id)));
-  typeSel.value = keepType || guessType(o.types || [], f ? f.chassis : '');
+  typeSel.value = keepType || guessType(o.types || [], f ? f.chassis : '', f ? f.model : '');
   if (!typeSel.value && typeSel.options.length) typeSel.selectedIndex = 0;
+  if (!$('tag').dataset.filled) { $('tag').value = tagFor(o, typeSel.value); $('tag').dataset.filled = '1'; $('tag').dataset.auto = $('tag').value; }
   const storage = (o.locations || []).filter((l) => l.tipo === 'storage')[0];
   locSel.value = keepLoc || (storage ? storage.id : '');
   if (!locSel.value && locSel.options.length) locSel.selectedIndex = 0;
 }
 
-// the same choice the server makes when no type is given
-function guessType(types, chassis) {
+// each type numbers its own tags (Z + LAP + 001); older inventories give one suggestion for all
+function tagFor(o, typeId) {
+  const ty = (o.types || []).filter((x) => x.id === typeId)[0];
+  return (ty && ty.nextTag) || o.nextTag || '';
+}
+
+// the same choice the server makes when no type is given: a type named in the model ("MacBook Air" is a
+// MacBook), else one that fits the chassis
+function guessType(types, chassis, model) {
+  const lower = (model || '').toLowerCase();
+  let best = null;
+  types.forEach((ty) => {
+    Object.values(ty.nombre && typeof ty.nombre === 'object' ? ty.nombre : { es: ty.nombre }).forEach((n) => {
+      if (!n) return;
+      const re = new RegExp('(^|[^a-z])' + n.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '($|[^a-z])');
+      if (re.test(lower) && (!best || n.length > best.len)) best = { id: ty.id, len: n.length };
+    });
+  });
+  if (best) return best.id;
   const wanted = {
     laptop: (ty) => ty.hasBattery,
     all_in_one: (ty) => ty.hasScreen && !ty.hasBattery,
@@ -432,6 +449,11 @@ $('backBtn').addEventListener('click', signOut);
 $('openBtn').addEventListener('click', () => { if (state.result) call('open_inventory', { url: state.result.url }).catch(() => {}); });
 $('closeBtn').addEventListener('click', () => call('quit'));
 $('serialInput').addEventListener('change', () => { if (state.user) loadOptions(); });
+// the suggested tag follows the type, until someone types their own
+$('type').addEventListener('change', () => {
+  const tag = $('tag');
+  if (state.options && tag.value === tag.dataset.auto) tag.value = tag.dataset.auto = tagFor(state.options, $('type').value);
+});
 $('lang').addEventListener('change', () => {
   lang = $('lang').value;
   try { localStorage.setItem('lang', lang); } catch (e) { /* not saved */ }

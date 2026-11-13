@@ -65,7 +65,7 @@ pub fn describe(code: &str) -> &'static str {
         "err_must_change" => "this account must change its password on the inventory website first",
         "err_forbidden" => "this account can only read the inventory; a technician or administrator account is needed",
         "err_auth" => "the session expired; sign in again",
-        "err_dup" => "that asset tag is already used by another device",
+        "err_dup" => "another device already uses that asset tag or its identification number",
         "err_required" => "the inventory is missing something it needs (a serial number, a device type or a location)",
         "maintenance" => "the inventory is being restored or updated; try again in a few minutes",
         "not_inventory" => "that address does not look like an inventory",
