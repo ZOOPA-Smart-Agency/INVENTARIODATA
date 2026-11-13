@@ -345,7 +345,7 @@ function fillNewFields(o, f) {
   (o.types || []).forEach((ty) => typeSel.appendChild(new Option(name(ty), ty.id)));
   locSel.textContent = '';
   (o.locations || []).forEach((l) => locSel.appendChild(new Option(name(l), l.id)));
-  typeSel.value = keepType || guessType(o.types || [], f ? f.chassis : '', f ? f.model : '');
+  typeSel.value = keepType || guessType(o.types || [], f ? f.chassis : '', f ? f.model : '', f ? f.manufacturer : '');
   if (!typeSel.value && typeSel.options.length) typeSel.selectedIndex = 0;
   if (!$('tag').dataset.filled) { $('tag').value = tagFor(o, typeSel.value); $('tag').dataset.filled = '1'; $('tag').dataset.auto = $('tag').value; }
   const storage = (o.locations || []).filter((l) => l.tipo === 'storage')[0];
@@ -359,19 +359,20 @@ function tagFor(o, typeId) {
   return (ty && ty.nextTag) || o.nextTag || '';
 }
 
-// the same choice the server makes when no type is given: a type named in the model ("MacBook Air" is a
-// MacBook), else one that fits the chassis
-function guessType(types, chassis, model) {
-  const lower = (model || '').toLowerCase();
-  let best = null;
-  types.forEach((ty) => {
-    Object.values(ty.nombre && typeof ty.nombre === 'object' ? ty.nombre : { es: ty.nombre }).forEach((n) => {
-      if (!n) return;
-      const re = new RegExp('(^|[^a-z])' + n.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '($|[^a-z])');
-      if (re.test(lower) && (!best || n.length > best.len)) best = { id: ty.id, len: n.length };
-    });
-  });
-  if (best) return best.id;
+// the same choice the server makes when no type is given (inventory/agent.py): a type whose words to match
+// (set in the inventory's Settings > Device types) appear in the maker or model, else one named there ("MacBook
+// Air" is a MacBook), else one that fits the chassis. A longer word wins.
+function guessType(types, chassis, model, manufacturer) {
+  const text = ((manufacturer || '') + ' ' + (model || '')).toLowerCase();
+  const esc = (w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const longest = (words) => Math.max(0, ...words.filter((w) => w && new RegExp('(^|[^a-z])' + esc(w) + '($|[^a-z])').test(text)).map((w) => w.length));
+  const names = (ty) => Object.values(ty.nombre && typeof ty.nombre === 'object' ? ty.nombre : { es: ty.nombre }).map((n) => String(n || '').toLowerCase());
+  const matches = (ty) => (ty.match || []).map((w) => String(w).toLowerCase());
+  for (const words of [matches, names]) {
+    let best = null;
+    types.forEach((ty) => { const n = longest(words(ty)); if (n && (!best || n > best.n)) best = { id: ty.id, n: n }; });
+    if (best) return best.id;
+  }
   const wanted = {
     laptop: (ty) => ty.hasBattery,
     all_in_one: (ty) => ty.hasScreen && !ty.hasBattery,
