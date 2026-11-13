@@ -1852,7 +1852,7 @@ dependencies = [
 
 [[package]]
 name = "inventario-core"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "clap",
  "dirs 5.0.1",
@@ -1868,7 +1868,7 @@ dependencies = [
 
 [[package]]
 name = "inventario-registro"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "inventario-core",
  "serde",
@@ -1881,7 +1881,7 @@ dependencies = [
 
 [[package]]
 name = "inventario-registro-cli"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "inventario-core",
 ]

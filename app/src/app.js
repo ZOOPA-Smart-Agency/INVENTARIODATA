@@ -361,7 +361,8 @@ function tagFor(o, typeId) {
 
 // the same choice the server makes when no type is given (inventory/agent.py): a type whose words to match
 // (set in the inventory's Settings > Device types) appear in the maker or model, else one named there ("MacBook
-// Air" is a MacBook), else one that fits the chassis. A longer word wins.
+// Air" is a MacBook), else one set to take every computer of this shape (maybe except Macs), else one that fits
+// the shape. A longer word wins.
 function guessType(types, chassis, model, manufacturer) {
   const text = ((manufacturer || '') + ' ' + (model || '')).toLowerCase();
   const esc = (w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -373,12 +374,16 @@ function guessType(types, chassis, model, manufacturer) {
     types.forEach((ty) => { const n = longest(words(ty)); if (n && (!best || n > best.n)) best = { id: ty.id, n: n }; });
     if (best) return best.id;
   }
+  const mac = /apple/.test((manufacturer || '').toLowerCase()) || /^\s*(imac|macbook|mac(?![a-z]))/.test((model || '').toLowerCase());
+  const allowed = types.filter((ty) => !(mac && ty.autoNotMac));
+  const ruled = chassis ? allowed.filter((ty) => ty.autoChassis === chassis)[0] : null;
+  if (ruled) return ruled.id;
   const wanted = {
     laptop: (ty) => ty.hasBattery,
     all_in_one: (ty) => ty.hasScreen && !ty.hasBattery,
     desktop: (ty) => !ty.hasScreen && !ty.hasBattery && !ty.usesName,
   }[chassis];
-  const found = wanted ? types.filter(wanted)[0] : null;
+  const found = wanted ? allowed.filter(wanted)[0] : null;
   return found ? found.id : '';
 }
 
