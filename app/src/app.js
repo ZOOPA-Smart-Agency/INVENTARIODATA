@@ -361,8 +361,8 @@ function tagFor(o, typeId) {
 
 // the same choice the server makes when no type is given (inventory/agent.py): a type whose words to match
 // (set in the inventory's Settings > Device types) appear in the maker or model, else one named there ("MacBook
-// Air" is a MacBook), else one set to take every computer of this shape (maybe except Macs), else one that fits
-// the shape. A longer word wins.
+// Air" is a MacBook), else one set to take every computer of this shape, then of any shape (each maybe only for
+// Apple computers or all but them), else one that fits the shape. A longer word wins.
 function guessType(types, chassis, model, manufacturer) {
   const text = ((manufacturer || '') + ' ' + (model || '')).toLowerCase();
   const esc = (w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -374,9 +374,11 @@ function guessType(types, chassis, model, manufacturer) {
     types.forEach((ty) => { const n = longest(words(ty)); if (n && (!best || n > best.n)) best = { id: ty.id, n: n }; });
     if (best) return best.id;
   }
-  const mac = /apple/.test((manufacturer || '').toLowerCase()) || /^\s*(imac|macbook|mac(?![a-z]))/.test((model || '').toLowerCase());
-  const allowed = types.filter((ty) => !(mac && ty.autoNotMac));
-  const ruled = chassis ? allowed.filter((ty) => ty.autoChassis === chassis)[0] : null;
+  const apple = /apple/.test((manufacturer || '').toLowerCase()) || /^\s*(imac|macbook|mac(?![a-z]))/.test((model || '').toLowerCase());
+  // which makers a type's rule covers: "only" Apple, "except" Apple, or all (inventories before 1.6.0 sent autoNotMac)
+  const makers = (ty) => ty.autoApple || (ty.autoNotMac ? 'except' : '');
+  const allowed = types.filter((ty) => makers(ty) !== (apple ? 'except' : 'only'));
+  const ruled = (chassis && allowed.filter((ty) => ty.autoChassis === chassis)[0]) || allowed.filter((ty) => ty.autoChassis === 'any')[0];
   if (ruled) return ruled.id;
   const wanted = {
     laptop: (ty) => ty.hasBattery,
