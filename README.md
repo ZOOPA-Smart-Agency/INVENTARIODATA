@@ -20,7 +20,11 @@ Windows and Linux also have a command-line version (`inventario-registro-cli_…
 
 The builds are not signed yet, so each system warns the first time:
 
-- **macOS**: right-click the app, choose **Open**, then **Open** again. On macOS 15 and later: open it once, then go to **System Settings > Privacy & Security** and click **Open Anyway**.
+- **macOS**: drag the app to **Applications** first; don't open it from the disk image. Then right-click it, choose **Open**, then **Open** again. On macOS 15 and later: open it once, then go to **System Settings > Privacy & Security** and click **Open Anyway**. If it only bounces in the Dock and never opens (macOS holds it while it checks the download), force quit it and run this in Terminal, then open it again:
+
+  ```bash
+  xattr -dr com.apple.quarantine "/Applications/Registro de equipos.app"
+  ```
 - **Windows**: in the blue "Windows protected your PC" window, click **More info**, then **Run anyway**.
 - **Linux**: no warning. Make an AppImage executable first: `chmod +x Registro*.AppImage`.
 
