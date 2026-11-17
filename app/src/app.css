@@ -74,6 +74,10 @@ form > button.primary { justify-self: stretch; margin-top: 2px; }
 .row { display: flex; justify-content: space-between; margin-top: 16px; }
 .row.center { justify-content: center; }
 .row > * + * { margin-left: 10px; }
+.row.tight { justify-content: flex-start; margin-top: 10px; flex-wrap: wrap; gap: 8px; }
+.row.tight > * + * { margin-left: 0; }
+#nameBox p { margin: 0; }
+#nameBox .error { margin-top: 8px; }
 .row .primary { flex: 1; max-width: 300px; }
 .row.center .primary { flex: none; }
 .hint { font-size: 12.5px; color: var(--muted); margin: 0; }

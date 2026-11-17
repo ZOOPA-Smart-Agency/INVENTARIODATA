@@ -15,6 +15,14 @@ const I18N = {
     signed_as: 'Sesión iniciada como {name}', review_title: 'Datos de este equipo', reading: 'Leyendo los datos del equipo…',
     serial_manual: 'Número de serie (este equipo no lo indica)',
     new_device: 'Este equipo no está en el inventario. Se añadirá con estos datos:',
+    name_is_tag: 'El nombre de este equipo, {name}, será su etiqueta de inventario.',
+    name_invalid: 'En este inventario el nombre del equipo debe ser su etiqueta, pero «{name}» no es una etiqueta válida. Cámbiale el nombre a {tag}.',
+    name_used: 'En este inventario el nombre del equipo debe ser su etiqueta, pero otro dispositivo ya usa {name}{used}. Cámbiale el nombre a {tag}.',
+    name_differs: 'En este inventario el nombre del equipo debe ser su etiqueta: este equipo se llama {name}, pero su etiqueta es {tag}. Cámbiale el nombre a {tag}.',
+    rename_btn: 'Cambiar el nombre a {tag}', name_settings: 'Abrir ajustes del sistema',
+    renamed: 'Nombre cambiado a {tag}.', renamed_restart: 'Nombre cambiado a {tag}. Reinicia el equipo para que se aplique.',
+    rename_cancelled: 'No se ha cambiado el nombre: se canceló la petición de permisos.', rename_failed: 'No se pudo cambiar el nombre: {detail}',
+    no_settings: 'No se encontraron los ajustes del sistema. Cambia el nombre del equipo a mano.', bad_name: '{tag} no puede ser el nombre de un equipo. Cámbialo a mano.',
     existing: 'Este equipo ya está en el inventario como {tag}. Se actualizarán sus datos de hardware y software; el estado, la ubicación, la asignación y el resto no cambian.',
     tag: 'Etiqueta', type: 'Tipo', location: 'Ubicación',
     add: 'Añadir al inventario', update: 'Actualizar en el inventario', sign_out: 'Cambiar de cuenta',
@@ -52,6 +60,14 @@ const I18N = {
     signed_as: 'Sessió iniciada com a {name}', review_title: "Dades d'aquest equip", reading: "S'estan llegint les dades de l'equip…",
     serial_manual: "Número de sèrie (aquest equip no l'indica)",
     new_device: "Aquest equip no és a l'inventari. S'hi afegirà amb aquestes dades:",
+    name_is_tag: 'El nom d’aquest equip, {name}, serà la seva etiqueta d’inventari.',
+    name_invalid: 'En aquest inventari el nom de l’equip ha de ser la seva etiqueta, però «{name}» no és una etiqueta vàlida. Canvia-li el nom a {tag}.',
+    name_used: 'En aquest inventari el nom de l’equip ha de ser la seva etiqueta, però un altre dispositiu ja fa servir {name}{used}. Canvia-li el nom a {tag}.',
+    name_differs: 'En aquest inventari el nom de l’equip ha de ser la seva etiqueta: aquest equip es diu {name}, però la seva etiqueta és {tag}. Canvia-li el nom a {tag}.',
+    rename_btn: 'Canvia el nom a {tag}', name_settings: 'Obre la configuració del sistema',
+    renamed: 'Nom canviat a {tag}.', renamed_restart: 'Nom canviat a {tag}. Reinicia l’equip perquè s’apliqui.',
+    rename_cancelled: 'No s’ha canviat el nom: s’ha cancel·lat la petició de permisos.', rename_failed: 'No s’ha pogut canviar el nom: {detail}',
+    no_settings: 'No s’ha trobat la configuració del sistema. Canvia el nom de l’equip a mà.', bad_name: '{tag} no pot ser el nom d’un equip. Canvia’l a mà.',
     existing: "Aquest equip ja és a l'inventari com a {tag}. S'actualitzaran les dades de maquinari i programari; l'estat, la ubicació, l'assignació i la resta no canvien.",
     tag: 'Etiqueta', type: 'Tipus', location: 'Ubicació',
     add: "Afegeix a l'inventari", update: "Actualitza a l'inventari", sign_out: 'Canvia de compte',
@@ -89,6 +105,14 @@ const I18N = {
     signed_as: 'Signed in as {name}', review_title: "This computer's details", reading: "Reading the computer's details…",
     serial_manual: 'Serial number (this computer does not report it)',
     new_device: 'This computer is not in the inventory. It will be added with these details:',
+    name_is_tag: 'This computer’s name, {name}, will be its asset tag.',
+    name_invalid: 'This inventory uses each computer’s name as its asset tag, but “{name}” is not a valid tag. Rename it to {tag}.',
+    name_used: 'This inventory uses each computer’s name as its asset tag, but another device already has {name}{used}. Rename it to {tag}.',
+    name_differs: 'This inventory uses each computer’s name as its asset tag: this computer is called {name}, but its tag is {tag}. Rename it to {tag}.',
+    rename_btn: 'Rename to {tag}', name_settings: 'Open system settings',
+    renamed: 'Renamed to {tag}.', renamed_restart: 'Renamed to {tag}. Restart the computer for the new name to apply.',
+    rename_cancelled: 'The name was not changed: the permission request was cancelled.', rename_failed: 'Could not rename the computer: {detail}',
+    no_settings: 'The system settings could not be found. Rename the computer by hand.', bad_name: '{tag} cannot be a computer name. Rename it by hand.',
     existing: 'This computer is already in the inventory as {tag}. Its hardware and software details will be updated; its status, location, assignment and everything else stay as they are.',
     tag: 'Asset tag', type: 'Type', location: 'Location',
     add: 'Add to the inventory', update: 'Update in the inventory', sign_out: 'Change account',
@@ -256,7 +280,9 @@ function serial() {
 async function loadOptions() {
   await state.factsPromise;
   try {
-    state.options = await call('options', { serial: serial() });
+    const facts = state.facts || {};
+    setError('nameError', '');
+    state.options = await call('options', { serial: serial(), hostname: facts.hostname || '' });
     setError('sendError', '');
   } catch (problem) {
     setError('sendError', message(problem));
@@ -332,6 +358,7 @@ function renderReview() {
   if (existing) $('existing').textContent = t('existing', { tag: existing.tag });
   $('newFields').hidden = !o || !!existing;
   if (o && !existing) fillNewFields(o, f);
+  renderName();
   $('sendBtn').textContent = t(existing ? 'update' : 'add');
   $('sendBtn').disabled = !f || !o;
 }
@@ -347,7 +374,12 @@ function fillNewFields(o, f) {
   (o.locations || []).forEach((l) => locSel.appendChild(new Option(name(l), l.id)));
   typeSel.value = keepType || guessType(o.types || [], f ? f.chassis : '', f ? f.model : '', f ? f.manufacturer : '');
   if (!typeSel.value && typeSel.options.length) typeSel.selectedIndex = 0;
-  if (!$('tag').dataset.filled) { $('tag').value = tagFor(o, typeSel.value); $('tag').dataset.filled = '1'; $('tag').dataset.auto = $('tag').value; }
+  if (!$('tag').dataset.filled) {
+    // with names as tags, a computer already named with a valid, free tag keeps it
+    const h = o.hostnameIsTag && o.hostnameTag;
+    $('tag').value = h && h.valid && !h.usedBy ? h.tag : tagFor(o, typeSel.value);
+    $('tag').dataset.filled = '1'; $('tag').dataset.auto = $('tag').value;
+  }
   const storage = (o.locations || []).filter((l) => l.tipo === 'storage')[0];
   locSel.value = keepLoc || (storage ? storage.id : '');
   if (!locSel.value && locSel.options.length) locSel.selectedIndex = 0;
@@ -422,6 +454,57 @@ async function signOut() {
   show('connect');
 }
 
+// ---------- the computer's name, when the inventory uses names as asset tags
+
+// the tag this computer should be named after: its tag in the inventory, or the one about to be given
+function wantedName() {
+  const o = state.options;
+  return ((o.existing ? o.existing.tag : $('tag').value) || '').trim();
+}
+
+function renderName() {
+  const o = state.options, box = $('nameBox');
+  const h = o && o.hostnameIsTag && o.hostnameTag;
+  box.hidden = !h;
+  if (!h) return;
+  const want = wantedName();
+  const same = want && want.toLowerCase() === h.name.toLowerCase();
+  let text;
+  if (same && h.valid && !h.usedBy) text = o.existing ? '' : t('name_is_tag', { name: h.name });
+  else if (!h.valid) text = t('name_invalid', { name: h.name, tag: want });
+  else if (h.usedBy && !(o.existing && h.matches)) text = t('name_used', { name: h.name, used: h.usedBy.toLowerCase() === h.name.toLowerCase() ? '' : ` (${h.usedBy})`, tag: want });
+  else text = t('name_differs', { name: h.name, tag: want });
+  box.hidden = !text;
+  box.classList.toggle('info', !!same);
+  $('nameText').textContent = text;
+  $('nameActions').hidden = !!same || !want;
+  $('renameBtn').textContent = t('rename_btn', { tag: want });
+  $('renameBtn').disabled = !/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,13}[A-Za-z0-9])?$/.test(want);
+}
+
+async function renameComputer() {
+  const want = wantedName();
+  setError('nameError', '');
+  busy($('renameBtn'), true);
+  try {
+    const done = await call('rename_computer', { name: want });
+    if (state.facts) state.facts.hostname = want;
+    if (done.restartNeeded) {
+      // Windows applies the new name after a restart: say so, and send the details as usual meanwhile
+      $('nameText').textContent = t('renamed_restart', { tag: want });
+      $('nameActions').hidden = true;
+      $('nameBox').classList.add('info');
+    } else {
+      await loadOptions();
+    }
+  } catch (problem) {
+    const code = typeof problem === 'string' ? problem : '';
+    setError('nameError', code === 'cancelled' ? t('rename_cancelled') : code === 'bad_name' ? t('bad_name', { tag: want }) : t('rename_failed', { detail: code || message(problem) }));
+  } finally {
+    busy($('renameBtn'), false);
+  }
+}
+
 // ---------- 4. done
 
 function renderDone() {
@@ -461,7 +544,11 @@ $('serialInput').addEventListener('change', () => { if (state.user) loadOptions(
 $('type').addEventListener('change', () => {
   const tag = $('tag');
   if (state.options && tag.value === tag.dataset.auto) tag.value = tag.dataset.auto = tagFor(state.options, $('type').value);
+  if (state.options) renderName();
 });
+$('tag').addEventListener('input', () => { if (state.options) renderName(); });
+$('renameBtn').addEventListener('click', renameComputer);
+$('nameSettingsBtn').addEventListener('click', () => call('open_name_settings').catch((e) => setError('nameError', e === 'no_settings' ? t('no_settings') : t('rename_failed', { detail: String(e) }))));
 $('lang').addEventListener('change', () => {
   lang = $('lang').value;
   try { localStorage.setItem('lang', lang); } catch (e) { /* not saved */ }

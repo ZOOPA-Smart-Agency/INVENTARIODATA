@@ -7,6 +7,7 @@ pub mod collect;
 pub mod facts;
 pub mod net;
 pub mod prefs;
+pub mod rename;
 
 /// This program's version, sent with every report.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

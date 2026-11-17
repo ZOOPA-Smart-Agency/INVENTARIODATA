@@ -51,6 +51,10 @@ pub struct Args {
     /// Print the result as JSON
     #[arg(long)]
     pub json: bool,
+    /// When the inventory uses computer names as asset tags, rename this computer to its tag (asks for
+    /// administrator rights; on Windows the new name applies after a restart)
+    #[arg(long)]
+    pub rename: bool,
 }
 
 struct Fail(i32, String);
@@ -253,7 +257,7 @@ fn register(args: Args) -> Result<(), Fail> {
     prefs.email = email.clone();
     prefs.save();
 
-    let options = client.options(&facts.serial).map_err(fail)?;
+    let options = client.options(&facts.serial, &facts.hostname).map_err(fail)?;
     let existing = options["existing"].clone();
     let mut body = json!({ "facts": facts });
     if existing.is_null() {
@@ -276,5 +280,27 @@ fn register(args: Args) -> Result<(), Fail> {
         println!("{} {} ({})", if created { "Added to the inventory as" } else { "Updated in the inventory:" },
                  device["tag"].as_str().unwrap_or("?"), client.device_url(&id));
     }
+    let tag = device["tag"].as_str().unwrap_or("");
+    if options["hostnameIsTag"].as_bool() == Some(true) && !tag.is_empty() && !tag.eq_ignore_ascii_case(&facts.hostname) {
+        rename_to_tag(&facts.hostname, tag, args.rename);
+    }
     Ok(())
+}
+
+/// The inventory uses computer names as asset tags, and this one's name is not its tag: rename it (with --rename)
+/// or say how.
+fn rename_to_tag(hostname: &str, tag: &str, rename: bool) {
+    if !crate::rename::valid_name(tag) {
+        eprintln!("note: the inventory uses each computer's name as its asset tag, but {tag} cannot be a computer name; rename it by hand");
+        return;
+    }
+    if !rename {
+        eprintln!("note: the inventory uses each computer's name as its asset tag, but this computer is called {hostname}; rename it to {tag} (run again with --rename to do it now; it needs administrator rights)");
+        return;
+    }
+    match crate::rename::rename(tag) {
+        Ok(done) if done.restart_needed => eprintln!("Renamed to {tag}. Restart the computer for the new name to apply."),
+        Ok(_) => eprintln!("Renamed to {tag}."),
+        Err(e) => eprintln!("warning: could not rename this computer to {tag}: {e}"),
+    }
 }

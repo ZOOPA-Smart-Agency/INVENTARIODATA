@@ -4,7 +4,7 @@ A small app that adds the computer it runs on to the company's IT inventory ([IN
 
 It reads the serial number, maker and model, processor, memory, drives, graphics, screen size, battery health, operating system, disk encryption (FileVault, BitLocker, LUKS), Active Directory membership and network cards. For a computer that is new to the inventory, it also asks for the asset tag, device type and location (filled in with sensible choices). For one that is already there, only its hardware and software details change: status, location, assignment, purchase data and notes stay as they are.
 
-It needs inventory version 1.2.0 or later (1.2.1 also saves the Wi-Fi generation and Bluetooth version), and an account with the technician or administrator role. From inventory 1.3.0, when its device types have tag codes, the suggested asset tag follows the chosen type (for example `ZLAP001` for a laptop, `ZMB001` for a MacBook), and a computer whose model names a type (a "MacBook Air" and a "MacBook" type) gets that type. From 1.4.0, each device type can also list words to match in **Settings > Device types** (for example "ThinkPad, Latitude"): a computer whose maker or model contains one gets that type. From 1.5.0, a type can also take every laptop, desktop or all-in-one that no word catches (from 1.6.0, also every computer of any shape), for all makers, only Apple, or all but Apple: for example, all laptops except Apple ones go to "Portátil" while MacBooks get their own type. The type can still be changed before sending.
+It needs inventory version 1.2.0 or later (1.2.1 also saves the Wi-Fi generation and Bluetooth version), and an account with the technician or administrator role. From inventory 1.3.0, when its device types have tag codes, the suggested asset tag follows the chosen type (for example `ZLAP001` for a laptop, `ZMB001` for a MacBook), and a computer whose model names a type (a "MacBook Air" and a "MacBook" type) gets that type. From 1.4.0, each device type can also list words to match in **Settings > Device types** (for example "ThinkPad, Latitude"): a computer whose maker or model contains one gets that type. From 1.10.0, when the inventory uses computer names as asset tags (**Settings > General**), the app checks this computer's name: a name that is a valid, free tag becomes its tag; otherwise it warns, and offers to rename the computer (it asks for administrator rights; on Windows the new name applies after a restart) or to open the system's settings for it. From 1.5.0, a type can also take every laptop, desktop or all-in-one that no word catches (from 1.6.0, also every computer of any shape), for all makers, only Apple, or all but Apple: for example, all laptops except Apple ones go to "Portátil" while MacBooks get their own type. The type can still be changed before sending.
 
 It does nothing in the background and never updates itself: it runs while it is open and stops when it is closed. The password is only used to sign in, and is never saved.
 
@@ -20,11 +20,13 @@ Windows and Linux also have a command-line version (`inventario-registro-cli_…
 
 The builds are not signed yet, so each system warns the first time:
 
-- **macOS**: drag the app to **Applications** first; don't open it from the disk image. Then right-click it, choose **Open**, then **Open** again. On macOS 15 and later: open it once, then go to **System Settings > Privacy & Security** and click **Open Anyway**. If it only bounces in the Dock and never opens (macOS holds it while it checks the download), force quit it and run this in Terminal, then open it again:
+- **macOS**: recent versions of macOS (15 and later) often refuse unsigned apps that were downloaded, even after **Open Anyway** in **System Settings > Privacy & Security**: the app only bounces in the Dock. The reliable way is to install it from Terminal into your own Applications folder, which also clears the marks macOS puts on downloads. With the disk image open, run:
 
   ```bash
-  xattr -dr com.apple.quarantine "/Applications/Registro de equipos.app"
+  mkdir -p ~/Applications && ditto "/Volumes/Registro de equipos/Registro de equipos.app" ~/Applications/"Registro de equipos.app" && xattr -cr ~/Applications/"Registro de equipos.app" && codesign --force --deep --sign - ~/Applications/"Registro de equipos.app"
   ```
+
+  Then open it from **Applications** in your home folder (in the Finder, **Go > Home**, or Launchpad). If you had copied it to the main **Applications** folder before, move that copy to the Bin: macOS remembers it refused it there. Signing the app with an Apple Developer ID would remove all of this.
 - **Windows**: in the blue "Windows protected your PC" window, click **More info**, then **Run anyway**.
 - **Linux**: no warning. Make an AppImage executable first: `chmod +x Registro*.AppImage`.
 
@@ -65,6 +67,7 @@ It asks for the password, unless one of these is given:
 | `--trust SHA256` | Trust the server's own certificate (or its certificate authority) with this fingerprint, without asking |
 | `--dry-run` | Only show what would be sent; needs no server |
 | `--json` | Print the result as JSON |
+| `--rename` | When the inventory uses computer names as asset tags, rename this computer to its tag (needs administrator rights) |
 
 | Exit code | Meaning |
 |---|---|

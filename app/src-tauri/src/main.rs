@@ -101,9 +101,21 @@ async fn sign_in(email: String, password: String, session: State<'_, Session>) -
 }
 
 #[tauri::command]
-async fn options(serial: String, session: State<'_, Session>) -> Result<Value, Problem> {
+async fn options(serial: String, hostname: Option<String>, session: State<'_, Session>) -> Result<Value, Problem> {
     let client = current(&session)?;
-    blocking(move || client.options(&serial)).await
+    blocking(move || client.options(&serial, hostname.as_deref().unwrap_or(""))).await
+}
+
+/// Renames this computer to its asset tag (the system asks for administrator rights).
+#[tauri::command]
+async fn rename_computer(name: String) -> Result<inventario_core::rename::Renamed, String> {
+    blocking(move || inventario_core::rename::rename(&name)).await
+}
+
+/// Opens the system's page for changing the computer's name.
+#[tauri::command]
+fn open_name_settings() -> Result<(), String> {
+    inventario_core::rename::open_name_settings()
 }
 
 #[tauri::command]
@@ -156,7 +168,7 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(Session::default())
-        .invoke_handler(tauri::generate_handler![start, collect_facts, connect, trust, sign_in, options, send, open_inventory, sign_out, quit])
+        .invoke_handler(tauri::generate_handler![start, collect_facts, connect, trust, sign_in, options, rename_computer, open_name_settings, send, open_inventory, sign_out, quit])
         .run(tauri::generate_context!())
         .expect("could not open the window");
 }

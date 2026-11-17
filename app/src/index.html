@@ -61,6 +61,14 @@
         <input id="serialInput" type="text" autocapitalize="characters" spellcheck="false">
       </label>
       <div id="existing" class="notice info" hidden></div>
+      <div id="nameBox" class="notice" hidden>
+        <p id="nameText"></p>
+        <div class="row tight" id="nameActions">
+          <button type="button" id="renameBtn"></button>
+          <button type="button" id="nameSettingsBtn" data-t="name_settings"></button>
+        </div>
+        <p class="error" id="nameError" role="alert" hidden></p>
+      </div>
       <div id="newFields" hidden>
         <p class="notice info" data-t="new_device"></p>
         <div class="grid">

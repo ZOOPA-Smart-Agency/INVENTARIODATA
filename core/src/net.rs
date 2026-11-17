@@ -286,8 +286,12 @@ impl Client {
         serde_json::from_value(body["user"].clone()).map_err(|e| Problem::Network { detail: e.to_string() })
     }
 
-    pub fn options(&self, serial: &str) -> Result<Value, Problem> {
-        let request = self.agent.get(&format!("{}/api/agent/options", self.base)).query("serial", serial);
+    /// `hostname`: this computer's name, for the server to say whether it can be its asset tag (inventory 1.10.0).
+    pub fn options(&self, serial: &str, hostname: &str) -> Result<Value, Problem> {
+        let mut request = self.agent.get(&format!("{}/api/agent/options", self.base)).query("serial", serial);
+        if !hostname.is_empty() {
+            request = request.query("hostname", hostname);
+        }
         let response = self.authorized(request).call().map_err(|e| self.problem(e))?;
         self.json(response)
     }
