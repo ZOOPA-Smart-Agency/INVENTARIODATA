@@ -203,3 +203,42 @@ pub fn bt_from_lmp(lmp: i64) -> String {
 pub fn hostname() -> String {
     run("hostname", &[]).map(|h| h.trim().split('.').next().unwrap_or("").to_string()).unwrap_or_default()
 }
+
+/// Whether a PC's (Windows or Linux) internal drive can be swapped: soldered eMMC and UFS storage cannot; SATA and
+/// SAS drives, and NVMe drives in an M.2 slot (nearly all of them), can. NVMe drives soldered to the board usually
+/// say "BGA" in their model name.
+pub fn pc_disk_replaceable(kind: &str, connector: &str, bus: &str, model: &str) -> &'static str {
+    let model = model.to_uppercase();
+    if kind == "eMMC" || bus.eq_ignore_ascii_case("ufs") || model.contains("UFS") || model.contains("EMMC") {
+        "no"
+    } else if connector == "NVMe" && model.contains("BGA") {
+        "no"
+    } else if ["SATA", "SAS", "NVMe"].contains(&connector) {
+        "yes"
+    } else {
+        ""
+    }
+}
+
+/// Whether a Mac's internal drive can be swapped, from its model identifier ("MacBookPro14,1"). Apple silicon and
+/// T2 Macs (2018 on) have their storage soldered or paired to the chip; so do the 12-inch MacBook and the 2016-2017
+/// MacBook Pro with Touch Bar. Older Macs have a SATA drive, or an SSD on a removable (Apple-specific) card.
+pub fn mac_disk_replaceable(identifier: &str, apple_silicon: bool) -> &'static str {
+    if apple_silicon {
+        return "no";
+    }
+    let family: String = identifier.chars().take_while(|c| c.is_ascii_alphabetic()).collect();
+    let mut numbers = identifier[family.len()..].split(',').map(|n| n.trim().parse::<u32>().ok());
+    let (Some(major), minor) = (numbers.next().flatten(), numbers.next().flatten()) else { return "" };
+    let soldered = match family.as_str() {
+        "MacBookPro" => major >= 15 || ((major == 13 || major == 14) && minor != Some(1)),
+        "MacBookAir" => major >= 8,
+        "MacBook" => major >= 8,
+        "iMac" => major >= 20,
+        "iMacPro" => true,
+        "Macmini" => major >= 8,
+        "MacPro" => major >= 7,
+        _ => return "",
+    };
+    if soldered { "no" } else { "yes" }
+}

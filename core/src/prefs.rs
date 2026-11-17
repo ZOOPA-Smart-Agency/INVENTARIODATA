@@ -6,6 +6,13 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
+/// The inventory address offered until someone uses another one. A build can set its own with the
+/// INVENTARIO_DEFAULT_SERVER environment variable.
+pub const DEFAULT_SERVER: &str = match option_env!("INVENTARIO_DEFAULT_SERVER") {
+    Some(server) => server,
+    None => "inventario.zoopa.local",
+};
+
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Prefs {
@@ -31,6 +38,11 @@ impl Prefs {
             }
             let _ = std::fs::write(p, serde_json::to_string_pretty(self).unwrap_or_default());
         }
+    }
+
+    /// The last address used, or the company's own when none was used yet.
+    pub fn server_or_default(&self) -> String {
+        if self.server.trim().is_empty() { DEFAULT_SERVER.to_string() } else { self.server.clone() }
     }
 
     pub fn pinned(&self, server: &str) -> Option<Trust> {

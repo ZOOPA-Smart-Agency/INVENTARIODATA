@@ -18,7 +18,16 @@ pub struct Inputs {
     pub hostname: String,
     /// width and height of the built-in screen in millimetres (from CoreGraphics), when it is on
     pub screen_mm: Option<(f64, f64)>,
+    /// `nvram` lines for the variables OpenCore and OpenCore Legacy Patcher set at startup (empty when absent)
+    pub nvram_oclp: String,
+    pub nvram_opencore: String,
+    /// OpenCore Legacy Patcher's record of its system patches, as JSON (empty when the Mac was never patched)
+    pub oclp_patches: String,
 }
+
+/// The vendor id OpenCore puts its NVRAM variables under.
+const OPENCORE_GUID: &str = "4D1FDA02-38C7-4A6A-9CC6-4BCCA8B30102";
+const OCLP_PATCHES: &str = "/System/Library/CoreServices/OpenCore-Legacy-Patcher.plist";
 
 #[cfg(target_os = "macos")]
 pub fn collect() -> Facts {
@@ -44,6 +53,13 @@ pub fn collect() -> Facts {
         ioreg_battery: run("ioreg", &["-rn", "AppleSmartBattery"]).unwrap_or_default(),
         hostname: util::hostname(),
         screen_mm: builtin_screen_mm(),
+        nvram_oclp: run("nvram", &[&format!("{OPENCORE_GUID}:OCLP-Version")]).unwrap_or_default(),
+        nvram_opencore: run("nvram", &[&format!("{OPENCORE_GUID}:opencore-version")]).unwrap_or_default(),
+        oclp_patches: if std::path::Path::new(OCLP_PATCHES).exists() {
+            run("plutil", &["-convert", "json", "-o", "-", OCLP_PATCHES]).unwrap_or_default()
+        } else {
+            String::new()
+        },
     };
     inputs.profiler["SPAirPortDataType"] = airport.join().unwrap_or(Value::Null);
     parse(&inputs)
@@ -115,6 +131,27 @@ fn items(profiler: &Value, name: &str) -> Vec<Value> {
     out
 }
 
+/// The value of an `nvram` line ("GUID:name\tvalue"), without the trailing NUL bytes nvram shows as %00.
+fn nvram_value(line: &str) -> String {
+    line.split_once('\t').map(|(_, v)| v.replace("%00", "").trim().to_string()).unwrap_or_default()
+}
+
+/// OpenCore Legacy Patcher's version, from what it set at startup or from its record of system patches; "yes" when
+/// the Mac started through OpenCore without saying which patcher; "" otherwise.
+pub fn oclp(input: &Inputs) -> String {
+    let clean = |v: String| v.trim_start_matches(['v', 'V']).to_string();
+    let booted = nvram_value(&input.nvram_oclp);
+    if !booted.is_empty() {
+        return clean(booted);
+    }
+    let patched = serde_json::from_str::<Value>(&input.oclp_patches).ok()
+        .map(|j| text(&j["OpenCore Legacy Patcher"])).unwrap_or_default();
+    if !patched.is_empty() {
+        return clean(patched);
+    }
+    if nvram_value(&input.nvram_opencore).is_empty() { String::new() } else { "yes".into() }
+}
+
 pub fn parse(input: &Inputs) -> Facts {
     let mut f = Facts::default();
     let hw = section(&input.profiler, "SPHardwareDataType").into_iter().next().cloned().unwrap_or(Value::Null);
@@ -128,6 +165,7 @@ pub fn parse(input: &Inputs) -> Facts {
         (false, true) => machine.clone(),
         _ => identifier.clone(),
     };
+    f.oclp = Some(oclp(input));
     f.chassis = if machine.contains("MacBook") { "laptop" } else if machine.contains("iMac") { "all_in_one" } else if machine.is_empty() { "unknown" } else { "desktop" }.into();
 
     // processor: "Apple M3 Pro" on Apple silicon, "Intel(R) Core(TM) i7-8850H CPU @ 2.60GHz" on Intel
@@ -174,7 +212,7 @@ pub fn parse(input: &Inputs) -> Facts {
             let Some(bytes) = num(&drive["size_in_bytes"]) else { continue };
             let medium = text(&drive["spsata_medium_type"]);
             let kind = if connector == "NVMe" || medium.contains("Solid") { "SSD" } else if medium.contains("Rotational") { "HDD" } else { "" };
-            f.disks.push(Disk { gb: util::disk_gb(bytes), kind: kind.into(), connector: connector.into(), replaceable: if apple_silicon { "no".into() } else { String::new() } });
+            f.disks.push(Disk { gb: util::disk_gb(bytes), kind: kind.into(), connector: connector.into(), replaceable: util::mac_disk_replaceable(&identifier, apple_silicon).into() });
         }
     }
 

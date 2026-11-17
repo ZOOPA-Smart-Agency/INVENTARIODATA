@@ -143,6 +143,9 @@ fn macos_intel_macbook_pro() {
         ioreg_battery: String::new(),
         hostname: "MBP-de-Ana".into(),
         screen_mm: Some((331.0, 207.0)), // what CoreGraphics reports for a 15.4" MacBook Pro
+        nvram_oclp: String::new(),
+        nvram_opencore: String::new(),
+        oclp_patches: String::new(),
     });
     collect::tidy(&mut f);
     assert_eq!(f.serial, "C02XK3JHMD6R");
@@ -152,7 +155,8 @@ fn macos_intel_macbook_pro() {
     assert_eq!((cpu.name.as_str(), cpu.cores, cpu.max_ghz), ("Intel Core i7-8850H", Some(6), Some(2.6)));
     let ram = f.ram.as_ref().unwrap();
     assert_eq!((ram.gb, ram.kind.as_str(), ram.mts, ram.replaceable.as_str()), (Some(16.0), "DDR4", Some(2400.0), "no"));
-    assert_eq!((f.disks[0].gb, f.disks[0].connector.as_str()), (500.0, "NVMe"));
+    assert_eq!((f.disks[0].gb, f.disks[0].connector.as_str(), f.disks[0].replaceable.as_str()), (500.0, "NVMe", "no")); // a T2 Mac
+    assert_eq!(f.oclp.as_deref(), Some(""));
     assert_eq!(f.gpus.len(), 2);
     assert_eq!((f.gpus[1].kind.as_str(), f.gpus[1].vram_gb), ("dedicated", Some(4.0)));
     assert_eq!(f.battery.as_ref().unwrap().health_pct, 87.0);
@@ -324,4 +328,59 @@ fn wifi_generations() {
     assert_eq!(macos::wifi_chip("spairport_wireless_card_type_wifi (0x14C3, 0x7932)"), "MediaTek MT7932");
     assert_eq!(macos::wifi_chip("Wi-Fi"), "");
     assert_eq!((bt_from_lmp(12), bt_from_lmp(99)), ("5.3".to_string(), String::new()));
+}
+
+#[test]
+fn drives_that_can_be_replaced() {
+    use inventario_core::collect::util::{mac_disk_replaceable as mac, pc_disk_replaceable as pc};
+    assert_eq!(mac("iMac14,2", false), "yes"); // 2013 iMac: a SATA drive
+    assert_eq!(mac("MacBookPro11,3", false), "yes"); // an SSD on a removable card
+    assert_eq!(mac("MacBookPro13,1", false), "yes"); // 2016 13-inch without Touch Bar
+    assert_eq!(mac("MacBookPro13,2", false), "no"); // with Touch Bar: soldered
+    assert_eq!(mac("MacBookPro15,1", false), "no"); // T2
+    assert_eq!(mac("MacBookAir7,2", false), "yes");
+    assert_eq!(mac("MacBookAir8,1", false), "no");
+    assert_eq!(mac("MacBook10,1", false), "no");
+    assert_eq!(mac("iMac19,1", false), "yes");
+    assert_eq!(mac("iMac20,1", false), "no");
+    assert_eq!(mac("Macmini7,1", false), "yes");
+    assert_eq!(mac("Macmini8,1", false), "no");
+    assert_eq!(mac("Mac14,2", true), "no"); // Apple silicon
+    assert_eq!(mac("Xserve3,1", false), "");
+    assert_eq!(pc("SSD", "NVMe", "NVMe", "Samsung SSD 980 PRO 1TB"), "yes");
+    assert_eq!(pc("SSD", "NVMe", "NVMe", "KIOXIA BG4 BGA 256GB"), "no");
+    assert_eq!(pc("HDD", "SATA", "SATA", "ST1000LM035"), "yes");
+    assert_eq!(pc("eMMC", "", "MMC", "DA4064"), "no");
+    assert_eq!(pc("SSD", "", "UFS", "KLUDG4UHDB"), "no");
+    assert_eq!(pc("SSD", "", "", ""), "");
+}
+
+#[test]
+fn opencore_legacy_patcher() {
+    let mac = |oclp: &str, opencore: &str, patches: &str| {
+        macos::oclp(&macos::Inputs {
+            profiler: serde_json::Value::Null, cpu_brand: String::new(), product_version: String::new(),
+            hardware_ports: String::new(), filevault: String::new(), directory: None, ioreg_battery: String::new(),
+            hostname: String::new(), screen_mm: None,
+            nvram_oclp: oclp.into(), nvram_opencore: opencore.into(), oclp_patches: patches.into(),
+        })
+    };
+    let guid = "4D1FDA02-38C7-4A6A-9CC6-4BCCA8B30102";
+    assert_eq!(mac(&format!("{guid}:OCLP-Version\t2.1.0%00\n"), &format!("{guid}:opencore-version\tREL-103-2024-12-01\n"), ""), "2.1.0");
+    assert_eq!(mac("", "", r#"{"OpenCore Legacy Patcher": "v1.5.0", "PatcherSupportPkg": "1.4.9"}"#), "1.5.0");
+    assert_eq!(mac("", &format!("{guid}:opencore-version\tREL-103-2024-12-01\n"), ""), "yes");
+    assert_eq!(mac("", "", ""), "");
+}
+
+#[test]
+fn windows_battery_warnings() {
+    let laptop = |battery: serde_json::Value| {
+        let f = windows::parse(&serde_json::json!({ "serial": "PF4ABCDE", "chassis": [10], "battery": battery }));
+        (f.battery.map(|b| b.health_pct), f.warnings)
+    };
+    // the figures from WMI, or from Windows' battery report (powercfg) when WMI had none
+    assert_eq!(laptop(serde_json::json!({"Full": 45000.0, "Design": 50000.0, "Present": true, "Admin": false})), (Some(90.0), vec![]));
+    // nothing anywhere: only suggest administrator rights when the app did not have them
+    assert_eq!(laptop(serde_json::json!({"Full": null, "Design": null, "Present": true, "Admin": false})).1, vec!["battery_needs_admin"]);
+    assert_eq!(laptop(serde_json::json!({"Full": null, "Design": null, "Present": true, "Admin": true})).1, vec!["battery_unknown"]);
 }

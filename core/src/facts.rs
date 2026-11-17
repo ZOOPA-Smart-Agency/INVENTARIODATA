@@ -21,6 +21,11 @@ pub struct Facts {
     pub os: Option<Os>,
     pub encryption: String,
     pub domain_joined: String,
+    /// Macs only (None elsewhere): OpenCore Legacy Patcher's version ("2.1.0") when the Mac starts up through it to
+    /// run a macOS Apple no longer supports on it; "yes" when it starts through OpenCore but the version is unknown;
+    /// "" when it does not.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub oclp: Option<String>,
     pub nics: Vec<Nic>,
     pub agent: Agent,
     /// Things that could not be read, as message keys for the person using the app (not used by the server).

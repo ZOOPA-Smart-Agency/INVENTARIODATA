@@ -139,7 +139,8 @@ fn print_facts(f: &Facts) {
     if let Some(os) = &f.os {
         let family = match os.family.as_str() { "mac" => "macOS", "win" => "Windows", _ => "Linux" };
         let name = if os.distro.is_empty() { family } else { &os.distro };
-        line("System", format!("{name} {} {}", os.version, os.edition));
+        let patched = match f.oclp.as_deref() { Some("") | None => String::new(), Some("yes") => " · OpenCore".into(), Some(v) => format!(" · OCLP {v}") };
+        line("System", format!("{name} {} {}{patched}", os.version, os.edition));
     }
     if let Some(inches) = f.screen_inches { line("Screen", format!("{inches}\"")); }
     if let Some(b) = &f.battery { line("Battery", format!("{}%", b.health_pct)); }
@@ -159,6 +160,7 @@ pub fn warning_text(key: &str) -> &'static str {
         "serial_missing" => "this computer does not report a serial number; give one with --serial",
         "serial_needs_admin" => "run as root (sudo) to read the serial number and memory details",
         "battery_needs_admin" => "battery health can only be read when running as administrator",
+        "battery_unknown" => "this computer does not report its battery health",
         "windows_tools_failed" => "Windows did not answer the hardware questions (PowerShell)",
         _ => "some details could not be read",
     }
@@ -204,7 +206,11 @@ fn register(args: Args) -> Result<(), Fail> {
     }
 
     let mut prefs = Prefs::load();
-    let server = match args.server.clone().or_else(|| interactive().then(|| ask("Inventory address: "))) {
+    let offered = prefs.server_or_default();
+    let server = match args.server.clone().or_else(|| interactive().then(|| {
+        let answer = ask(&format!("Inventory address [{offered}]: "));
+        if answer.is_empty() { offered.clone() } else { answer }
+    })) {
         Some(s) if !s.trim().is_empty() => net::normalize_url(&s).map_err(fail)?,
         _ => return Err(usage("give the inventory's address with --server")),
     };

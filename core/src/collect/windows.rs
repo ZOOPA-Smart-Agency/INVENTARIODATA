@@ -1,6 +1,7 @@
 //! Windows 10 and 11: one PowerShell script reads everything through WMI/CIM and the Storage and NetAdapter
-//! modules, and prints it as JSON. Nothing here needs administrator rights; the battery's design capacity is
-//! sometimes only visible to administrators, in which case battery health is left out.
+//! modules, and prints it as JSON. Nothing here needs administrator rights. Battery health comes from WMI's battery
+//! classes, which many laptops leave empty (even for administrators); then from Windows' own battery report
+//! (powercfg /batteryreport), which reads the same figures the way Settings does.
 
 use super::util::{self, list, num, text};
 use crate::facts::{Battery, Cpu, Disk, Facts, Gpu, Nic, Os, Ram};
@@ -17,6 +18,18 @@ $bitlocker = $null
 try { $bitlocker = (New-Object -ComObject Shell.Application).NameSpace($env:SystemDrive + '\').Self.ExtendedProperty('System.Volume.BitLockerProtection') } catch {}
 $full = (Get-CimInstance -Namespace root\wmi -ClassName BatteryFullChargedCapacity | Select-Object -First 1).FullChargedCapacity
 $design = (Get-CimInstance -Namespace root\wmi -ClassName BatteryStaticData | Select-Object -First 1).DesignedCapacity
+$hasBattery = [bool](Get-CimInstance Win32_Battery)
+if ($hasBattery -and (-not $full -or -not $design)) {
+  # Windows' battery report: an XML file with each battery's design and full-charge capacity
+  $report = Join-Path $env:TEMP ('inventario-battery-' + [guid]::NewGuid() + '.xml')
+  powercfg /batteryreport /xml /output $report | Out-Null
+  if (Test-Path $report) {
+    $b = ([xml](Get-Content $report -Raw)).BatteryReport.Batteries.Battery | Select-Object -First 1
+    if ($b) { $design = [double]$b.DesignCapacity; $full = [double]$b.FullChargeCapacity }
+    Remove-Item $report -Force
+  }
+}
+$admin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 $internal = @(Get-CimInstance -Namespace root\wmi -ClassName WmiMonitorConnectionParams | Where-Object { $_.VideoOutputTechnology -eq 2147483648 -or $_.VideoOutputTechnology -eq -2147483648 } | ForEach-Object { $_.InstanceName })
 # Wi-Fi standards the card supports ("802.11ax", the same in every language) and the Bluetooth radio's LMP version
 $wlan = (netsh wlan show drivers) -join "`n"
@@ -31,13 +44,13 @@ $screen = Get-CimInstance -Namespace root\wmi -ClassName WmiMonitorBasicDisplayP
   cpu = Get-CimInstance Win32_Processor | Select-Object -First 1 Name, NumberOfCores, MaxClockSpeed
   memory = @(Get-CimInstance Win32_PhysicalMemory | Select-Object Capacity, Speed, ConfiguredClockSpeed, SMBIOSMemoryType, FormFactor)
   gpus = @(Get-CimInstance Win32_VideoController | Select-Object Name, AdapterRAM)
-  disks = @(Get-PhysicalDisk | ForEach-Object { [pscustomobject]@{ Size = $_.Size; MediaType = [string]$_.MediaType; BusType = [string]$_.BusType } })
+  disks = @(Get-PhysicalDisk | ForEach-Object { [pscustomobject]@{ Size = $_.Size; MediaType = [string]$_.MediaType; BusType = [string]$_.BusType; Model = [string]$_.FriendlyName } })
   nics = @(Get-NetAdapter -Physical | ForEach-Object { [pscustomobject]@{ Description = $_.InterfaceDescription; MacAddress = $_.MacAddress; Media = [string]$_.PhysicalMediaType } })
   os = [pscustomobject]@{ Caption = $os.Caption; DisplayVersion = $cv.DisplayVersion; ReleaseId = $cv.ReleaseId; Build = $os.BuildNumber }
   bitlocker = $bitlocker
   wlan = $wlan
   lmp = $lmp
-  battery = [pscustomobject]@{ Full = $full; Design = $design }
+  battery = [pscustomobject]@{ Full = $full; Design = $design; Present = $hasBattery; Admin = $admin }
   screen = if ($screen) { [pscustomobject]@{ Width = $screen.MaxHorizontalImageSize; Height = $screen.MaxVerticalImageSize } } else { $null }
 } | ConvertTo-Json -Depth 4 -Compress
 "#;
@@ -119,9 +132,10 @@ pub fn parse(j: &Value) -> Facts {
         }
         let Some(bytes) = num(&disk["Size"]) else { continue };
         let media = text(&disk["MediaType"]);
-        let kind = match media.as_str() { "SSD" | "4" => "SSD", "HDD" | "3" => "HDD", "SCM" => "SSD", _ if bus == "NVMe" || bus == "17" => "SSD", _ if bus == "MMC" => "eMMC", _ => "" };
+        let kind = match media.as_str() { "SSD" | "4" => "SSD", "HDD" | "3" => "HDD", "SCM" => "SSD", _ if bus == "NVMe" || bus == "17" => "SSD", _ if bus == "MMC" || bus == "13" => "eMMC", _ => "" };
         let connector = match bus.as_str() { "NVMe" | "17" => "NVMe", "SATA" | "11" => "SATA", "SAS" | "10" => "SAS", "RAID" | "8" => "RAID", _ => "" };
-        f.disks.push(Disk { gb: util::disk_gb(bytes), kind: kind.into(), connector: connector.into(), replaceable: String::new() });
+        let replaceable = util::pc_disk_replaceable(kind, connector, if bus == "19" { "UFS" } else { &bus }, &text(&disk["Model"]));
+        f.disks.push(Disk { gb: util::disk_gb(bytes), kind: kind.into(), connector: connector.into(), replaceable: replaceable.into() });
     }
 
     for nic in list(&j["nics"]) {
@@ -160,8 +174,10 @@ pub fn parse(j: &Value) -> Facts {
         if design > 0.0 && full > 0.0 {
             f.battery = Some(Battery { health_pct: (full / design * 100.0).round().min(100.0) });
         }
-    } else if f.chassis == "laptop" {
-        f.warnings.push("battery_needs_admin".into());
+    } else if f.chassis == "laptop" || j["battery"]["Present"] == Value::Bool(true) {
+        // only worth suggesting administrator rights when the app did not have them
+        let admin = j["battery"]["Admin"] == Value::Bool(true);
+        f.warnings.push(if admin { "battery_unknown" } else { "battery_needs_admin" }.into());
     }
     if let (Some(w), Some(h)) = (num(&j["screen"]["Width"]), num(&j["screen"]["Height"])) {
         f.screen_inches = util::inches_from_cm(w, h);

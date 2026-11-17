@@ -38,7 +38,7 @@ struct Start {
 #[tauri::command]
 fn start() -> Start {
     let prefs = Prefs::load();
-    Start { server: prefs.server, email: prefs.email, version: VERSION, platform: format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH) }
+    Start { server: prefs.server_or_default(), email: prefs.email, version: VERSION, platform: format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH) }
 }
 
 #[tauri::command]

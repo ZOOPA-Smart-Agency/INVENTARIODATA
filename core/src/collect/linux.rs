@@ -86,7 +86,7 @@ pub fn collect() -> Facts {
         lscpu: run("lscpu", &["-J"]).and_then(|s| serde_json::from_str(&s).ok()).unwrap_or(Value::Null),
         meminfo: read("/proc/meminfo").unwrap_or_default(),
         dmidecode_memory: if is_root { run("dmidecode", &["-t", "memory"]).unwrap_or_default() } else { String::new() },
-        lsblk: run("lsblk", &["-J", "-b", "-o", "NAME,SIZE,ROTA,TRAN,TYPE,RM"]).and_then(|s| serde_json::from_str(&s).ok()).unwrap_or(Value::Null),
+        lsblk: run("lsblk", &["-J", "-b", "-o", "NAME,SIZE,ROTA,TRAN,TYPE,RM,MODEL"]).and_then(|s| serde_json::from_str(&s).ok()).unwrap_or(Value::Null),
         lspci: run("lspci", &["-mm"]).unwrap_or_default(),
         nets,
         os_release: read("/etc/os-release").or_else(|| read("/usr/lib/os-release")).unwrap_or_default(),
@@ -217,7 +217,8 @@ pub fn parse(i: &Inputs) -> Facts {
         } else {
             (if flag(&dev["rota"]) { "HDD" } else { "SSD" }, match tran.as_str() { "sata" => "SATA", "sas" => "SAS", _ => "" })
         };
-        f.disks.push(Disk { gb: util::disk_gb(bytes), kind: kind.into(), connector: connector.into(), replaceable: String::new() });
+        let replaceable = util::pc_disk_replaceable(kind, connector, &tran, &text(&dev["model"]));
+        f.disks.push(Disk { gb: util::disk_gb(bytes), kind: kind.into(), connector: connector.into(), replaceable: replaceable.into() });
     }
 
     // lspci -mm: 00:02.0 "VGA compatible controller" "Intel Corporation" "Alder Lake-P GT2 [Iris Xe Graphics]" ...

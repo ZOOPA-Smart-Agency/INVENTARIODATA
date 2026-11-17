@@ -34,6 +34,7 @@ const I18N = {
     w_serial_missing: 'Este equipo no indica su número de serie. Escríbelo abajo (suele estar en una etiqueta del equipo).',
     w_serial_needs_admin: 'Para leer el número de serie y los módulos de memoria, abre la aplicación como administrador (sudo).',
     w_battery_needs_admin: 'La salud de la batería solo se puede leer abriendo la aplicación como administrador.',
+    w_battery_unknown: 'Este equipo no informa de la salud de su batería.',
     w_windows_tools_failed: 'Windows no ha respondido a las consultas de hardware (PowerShell). Faltan datos.',
     w_other: 'Algunos datos no se han podido leer.',
     e_login_err: 'Correo, nombre de usuario o contraseña incorrectos.', e_login_off: 'Esta cuenta está desactivada.',
@@ -79,6 +80,7 @@ const I18N = {
     w_serial_missing: "Aquest equip no indica el número de sèrie. Escriu-lo a sota (sol estar en una etiqueta de l'equip).",
     w_serial_needs_admin: "Per llegir el número de sèrie i els mòduls de memòria, obre l'aplicació com a administrador (sudo).",
     w_battery_needs_admin: "La salut de la bateria només es pot llegir obrint l'aplicació com a administrador.",
+    w_battery_unknown: "Aquest equip no informa de la salut de la seva bateria.",
     w_windows_tools_failed: 'Windows no ha respost a les consultes de maquinari (PowerShell). Falten dades.',
     w_other: "No s'han pogut llegir algunes dades.",
     e_login_err: 'Correu, nom d’usuari o contrasenya incorrectes.', e_login_off: 'Aquest compte està desactivat.',
@@ -124,6 +126,7 @@ const I18N = {
     w_serial_missing: 'This computer does not report its serial number. Type it below (it is usually on a label on the computer).',
     w_serial_needs_admin: 'To read the serial number and memory modules, open the app as administrator (sudo).',
     w_battery_needs_admin: 'Battery health can only be read when the app is opened as administrator.',
+    w_battery_unknown: 'This computer does not report its battery health.',
     w_windows_tools_failed: 'Windows did not answer the hardware queries (PowerShell). Some details are missing.',
     w_other: 'Some details could not be read.',
     e_login_err: 'Wrong email, username or password.', e_login_off: 'This account is deactivated.',
@@ -318,7 +321,8 @@ function factRows(f) {
   if (f.battery) add('f_battery', number(f.battery.healthPct) + ' %');
   if (f.os) {
     const family = { mac: 'macOS', win: 'Windows', linux: 'Linux' }[f.os.family] || f.os.family;
-    add('f_os', [f.os.distro || family, f.os.version, f.os.edition].filter(Boolean).join(' '));
+    const oclp = f.oclp ? (f.oclp === 'yes' ? 'OpenCore' : 'OCLP ' + f.oclp) : '';
+    add('f_os', [[f.os.distro || family, f.os.version, f.os.edition].filter(Boolean).join(' '), oclp].filter(Boolean).join(' · '));
   }
   add('f_enc', yesNo(f.encryption));
   add('f_domain', yesNo(f.domainJoined));

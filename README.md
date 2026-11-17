@@ -2,7 +2,7 @@
 
 A small app that adds the computer it runs on to the company's IT inventory ([INVENTARIO-IT](https://github.com/ZOOPA-Smart-Agency/INVENTARIO-IT)), or updates it if its serial number is already there. Someone from IT opens it, types the inventory's address, their email (or, from inventory 1.7.0, their username) and password, checks the details it read, and sends them.
 
-It reads the serial number, maker and model, processor, memory, drives, graphics, screen size, battery health, operating system, disk encryption (FileVault, BitLocker, LUKS), Active Directory membership and network cards. For a computer that is new to the inventory, it also asks for the asset tag, device type and location (filled in with sensible choices). For one that is already there, only its hardware and software details change: status, location, assignment, purchase data and notes stay as they are.
+It reads the serial number, maker and model, processor, memory, drives (and whether each can be replaced), graphics, screen size, battery health, operating system, disk encryption (FileVault, BitLocker, LUKS), Active Directory membership and network cards. On Macs it also notices OpenCore Legacy Patcher, which lets older Macs run a macOS Apple no longer supports on them, and reads its version (saved from inventory 1.11.0). For a computer that is new to the inventory, it also asks for the asset tag, device type and location (filled in with sensible choices). For one that is already there, only its hardware and software details change: status, location, assignment, purchase data and notes stay as they are.
 
 It needs inventory version 1.2.0 or later (1.2.1 also saves the Wi-Fi generation and Bluetooth version), and an account with the technician or administrator role. From inventory 1.3.0, when its device types have tag codes, the suggested asset tag follows the chosen type (for example `ZLAP001` for a laptop, `ZMB001` for a MacBook), and a computer whose model names a type (a "MacBook Air" and a "MacBook" type) gets that type. From 1.4.0, each device type can also list words to match in **Settings > Device types** (for example "ThinkPad, Latitude"): a computer whose maker or model contains one gets that type. From 1.10.0, when the inventory uses computer names as asset tags (**Settings > General**), the app checks this computer's name: a name that is a valid, free tag becomes its tag; otherwise it warns, and offers to rename the computer (it asks for administrator rights; on Windows the new name applies after a restart) or to open the system's settings for it. From 1.5.0, a type can also take every laptop, desktop or all-in-one that no word catches (from 1.6.0, also every computer of any shape), for all makers, only Apple, or all but Apple: for example, all laptops except Apple ones go to "Portátil" while MacBooks get their own type. The type can still be changed before sending.
 
@@ -34,10 +34,9 @@ The builds are not signed yet, so each system warns the first time:
 
 ## What needs administrator rights
 
-Everything works as a normal user, except:
+On **Windows**, the app always starts as administrator: Windows asks for permission each time it opens (or, on an account without administrator rights, for an administrator's name and password). That way it can read everything, including battery health where the laptop reports it. The app first asks Windows' battery classes, then its battery report (`powercfg /batteryreport`); if neither has the figures, the laptop does not report them, and the app says so. The command-line version (`inventario-registro-cli`) does not ask; run it from a terminal opened as administrator to read everything.
 
-- **Linux**: the serial number and memory module details. Without them, the app asks for the serial number (it is usually on a label). To read everything, open it with `sudo`. With the AppImage, that is `sudo ./Registro*.AppImage`.
-- **Windows**: battery health on some laptops.
+On macOS everything works as a normal user. On **Linux**, the serial number and memory module details need administrator rights. Without them, the app asks for the serial number (it is usually on a label). To read everything, open it with `sudo`. With the AppImage, that is `sudo ./Registro*.AppImage`.
 
 ## The server's own certificate
 
@@ -51,7 +50,7 @@ The choice is remembered, and it applies only to that address. Nothing private, 
 
 ## Command line
 
-The command-line version takes the same steps as the window. The app itself also works this way when given options (for example `"/Applications/Registro de equipos.app/Contents/MacOS/inventario-registro" --help`).
+The command-line version takes the same steps as the window. On macOS and Linux, the app itself also works this way when given options (for example `"/Applications/Registro de equipos.app/Contents/MacOS/inventario-registro" --help`). On Windows, use `inventario-registro-cli` instead: the app asks to run as administrator, which opens it in a separate window.
 
 ```bash
 inventario-registro-cli --server inventario.empresa.es --email it@empresa.es
@@ -81,7 +80,7 @@ It asks for the password, unless one of these is given:
 
 ## Settings
 
-The last address and email or username, and the certificates someone chose to trust, are saved in `prefs.json` in a folder named `inventario-registro` in the user's settings folder:
+The address starts filled in with `inventario.zoopa.local` and can be changed; a build can offer another one by setting `INVENTARIO_DEFAULT_SERVER` when compiling. The last address and email or username, and the certificates someone chose to trust, are saved in `prefs.json` in a folder named `inventario-registro` in the user's settings folder:
 
 - macOS: `~/Library/Application Support`
 - Windows: `%APPDATA%`
