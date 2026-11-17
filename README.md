@@ -1,6 +1,6 @@
 # Registro de equipos
 
-A small app that adds the computer it runs on to the company's IT inventory ([INVENTARIO-IT](https://github.com/ZOOPA-Smart-Agency/INVENTARIO-IT)), or updates it if its serial number is already there. Someone from IT opens it, types the inventory's address and their email and password, checks the details it read, and sends them.
+A small app that adds the computer it runs on to the company's IT inventory ([INVENTARIO-IT](https://github.com/ZOOPA-Smart-Agency/INVENTARIO-IT)), or updates it if its serial number is already there. Someone from IT opens it, types the inventory's address, their email (or, from inventory 1.7.0, their username) and password, checks the details it read, and sends them.
 
 It reads the serial number, maker and model, processor, memory, drives, graphics, screen size, battery health, operating system, disk encryption (FileVault, BitLocker, LUKS), Active Directory membership and network cards. For a computer that is new to the inventory, it also asks for the asset tag, device type and location (filled in with sensible choices). For one that is already there, only its hardware and software details change: status, location, assignment, purchase data and notes stay as they are.
 
@@ -76,7 +76,7 @@ It asks for the password, unless one of these is given:
 
 ## Settings
 
-The last address and email, and the certificates someone chose to trust, are saved in `prefs.json` in a folder named `inventario-registro` in the user's settings folder:
+The last address and email or username, and the certificates someone chose to trust, are saved in `prefs.json` in a folder named `inventario-registro` in the user's settings folder:
 
 - macOS: `~/Library/Application Support`
 - Windows: `%APPDATA%`

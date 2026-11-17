@@ -20,8 +20,9 @@ pub struct Args {
     /// Address of the inventory, for example inventario.empresa.es
     #[arg(long, short = 's')]
     pub server: Option<String>,
-    /// Email of an inventory account with the technician or administrator role
-    #[arg(long, short = 'e')]
+    /// Email or username of an inventory account with the technician or administrator role (usernames need
+    /// inventory 1.7.0 or later)
+    #[arg(long, short = 'e', visible_alias = "user")]
     pub email: Option<String>,
     /// Read the password from this environment variable instead of asking for it
     #[arg(long, value_name = "VARIABLE", conflicts_with = "password_stdin")]
@@ -59,7 +60,7 @@ fn usage(message: impl Into<String>) -> Fail { Fail(2, message.into()) }
 /// Plain-English text for the inventory's error keys.
 pub fn describe(code: &str) -> &'static str {
     match code {
-        "login_err" => "wrong email or password",
+        "login_err" => "wrong email, username or password",
         "login_off" => "this account is deactivated",
         "login_locked" => "too many failed attempts; wait a few minutes and try again",
         "err_must_change" => "this account must change its password on the inventory website first",
@@ -203,9 +204,9 @@ fn register(args: Args) -> Result<(), Fail> {
         Some(s) if !s.trim().is_empty() => net::normalize_url(&s).map_err(fail)?,
         _ => return Err(usage("give the inventory's address with --server")),
     };
-    let email = match args.email.clone().or_else(|| interactive().then(|| ask("Email: "))) {
+    let email = match args.email.clone().or_else(|| interactive().then(|| ask("Email or username: "))) {
         Some(e) if !e.trim().is_empty() => e.trim().to_string(),
-        _ => return Err(usage("give the account's email with --email")),
+        _ => return Err(usage("give the account's email or username with --email")),
     };
 
     // the certificate is checked before the password is even asked for

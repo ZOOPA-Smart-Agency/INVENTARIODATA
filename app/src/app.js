@@ -5,7 +5,7 @@
 const I18N = {
   es: {
     title: 'Registro de equipos', subtitle: 'Añade este equipo al inventario o actualiza sus datos.',
-    server: 'Dirección del inventario', server_ph: 'inventario.empresa.es', email: 'Email', password: 'Contraseña',
+    server: 'Dirección del inventario', server_ph: 'inventario.empresa.es', email: 'Correo o nombre de usuario', password: 'Contraseña',
     continue: 'Continuar', account_hint: 'Usa una cuenta de técnico o administrador del inventario. La contraseña no se guarda.',
     trust_title: 'Certificado propio del servidor',
     trust_text: 'Este servidor usa su propio certificado, que este equipo no reconoce. Confía en él solo si es el inventario de tu empresa.',
@@ -28,7 +28,7 @@ const I18N = {
     w_battery_needs_admin: 'La salud de la batería solo se puede leer abriendo la aplicación como administrador.',
     w_windows_tools_failed: 'Windows no ha respondido a las consultas de hardware (PowerShell). Faltan datos.',
     w_other: 'Algunos datos no se han podido leer.',
-    e_login_err: 'Email o contraseña incorrectos.', e_login_off: 'Esta cuenta está desactivada.',
+    e_login_err: 'Correo, nombre de usuario o contraseña incorrectos.', e_login_off: 'Esta cuenta está desactivada.',
     e_login_locked: 'Demasiados intentos fallidos. Espera unos minutos y vuelve a probar.',
     e_err_must_change: 'Esta cuenta tiene que cambiar la contraseña en la web del inventario antes de usarla aquí.',
     e_err_forbidden: 'Esta cuenta solo puede consultar el inventario. Hace falta una cuenta de técnico o administrador.',
@@ -42,7 +42,7 @@ const I18N = {
   },
   ca: {
     title: "Registre d'equips", subtitle: "Afegeix aquest equip a l'inventari o actualitza'n les dades.",
-    server: "Adreça de l'inventari", server_ph: 'inventari.empresa.cat', email: 'Correu electrònic', password: 'Contrasenya',
+    server: "Adreça de l'inventari", server_ph: 'inventari.empresa.cat', email: 'Correu o nom d’usuari', password: 'Contrasenya',
     continue: 'Continua', account_hint: "Fes servir un compte de tècnic o administrador de l'inventari. La contrasenya no es desa.",
     trust_title: 'Certificat propi del servidor',
     trust_text: "Aquest servidor fa servir el seu propi certificat, que aquest equip no reconeix. Confia-hi només si és l'inventari de la teva empresa.",
@@ -65,7 +65,7 @@ const I18N = {
     w_battery_needs_admin: "La salut de la bateria només es pot llegir obrint l'aplicació com a administrador.",
     w_windows_tools_failed: 'Windows no ha respost a les consultes de maquinari (PowerShell). Falten dades.',
     w_other: "No s'han pogut llegir algunes dades.",
-    e_login_err: 'Correu o contrasenya incorrectes.', e_login_off: 'Aquest compte està desactivat.',
+    e_login_err: 'Correu, nom d’usuari o contrasenya incorrectes.', e_login_off: 'Aquest compte està desactivat.',
     e_login_locked: 'Massa intents fallits. Espera uns minuts i torna-ho a provar.',
     e_err_must_change: "Aquest compte ha de canviar la contrasenya al web de l'inventari abans de fer-lo servir aquí.",
     e_err_forbidden: "Aquest compte només pot consultar l'inventari. Cal un compte de tècnic o administrador.",
@@ -79,7 +79,7 @@ const I18N = {
   },
   en: {
     title: 'Device registration', subtitle: 'Add this computer to the inventory, or update its details.',
-    server: 'Inventory address', server_ph: 'inventory.company.com', email: 'Email', password: 'Password',
+    server: 'Inventory address', server_ph: 'inventory.company.com', email: 'Email or username', password: 'Password',
     continue: 'Continue', account_hint: 'Use a technician or administrator account of the inventory. The password is not saved.',
     trust_title: "The server's own certificate",
     trust_text: "This server uses its own certificate, which this computer does not recognise. Only trust it if it is your company's inventory.",
@@ -102,7 +102,7 @@ const I18N = {
     w_battery_needs_admin: 'Battery health can only be read when the app is opened as administrator.',
     w_windows_tools_failed: 'Windows did not answer the hardware queries (PowerShell). Some details are missing.',
     w_other: 'Some details could not be read.',
-    e_login_err: 'Wrong email or password.', e_login_off: 'This account is deactivated.',
+    e_login_err: 'Wrong email, username or password.', e_login_off: 'This account is deactivated.',
     e_login_locked: 'Too many failed attempts. Wait a few minutes and try again.',
     e_err_must_change: 'This account must change its password on the inventory website before using it here.',
     e_err_forbidden: 'This account can only view the inventory. A technician or administrator account is needed.',
