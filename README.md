@@ -11,8 +11,10 @@ It does nothing in the background and never updates itself: it runs while it is 
 | System | Versions | Download |
 |---|---|---|
 | macOS | 10.15 Catalina and later, Intel and Apple silicon (one universal app) | `.dmg` |
-| Windows | 10 and 11, x64 and ARM | `-setup.exe` (or `.msi` for x64) |
+| Windows | 10 and 11, x64 and ARM | `-setup.exe` (or `.msi` for x64), or `-portable.exe` |
 | Linux | Ubuntu 22.04, Debian 12, Fedora 38 and later, and similar; x64 and ARM | `.deb`, `.rpm` or `.AppImage` |
+
+On Windows, the `-portable.exe` is the app itself, with nothing to install: copy it to a USB stick or a shared folder and open it on each computer. It uses Microsoft Edge WebView2, which Windows 11 and up-to-date Windows 10 already have; on a Windows 10 computer without it, use the installer, which adds it. Like the installed app, it keeps its settings in `%APPDATA%\inventario-registro`, not next to the `.exe`.
 
 Windows and Linux also have a command-line version (`inventario-registro-cli_….zip`), with no window, for servers and remote sessions. On macOS, the app itself works as the command line (see below).
 

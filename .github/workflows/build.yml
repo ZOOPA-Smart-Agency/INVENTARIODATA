@@ -107,11 +107,18 @@ jobs:
           New-Item -ItemType Directory -Force dist | Out-Null
           Copy-Item (Get-Item target/${{ matrix.target }}/release/bundle/nsis/*.exe) "dist/$name-setup.exe"
           if ("${{ matrix.arch }}" -eq "x64") { Copy-Item (Get-Item target/${{ matrix.target }}/release/bundle/msi/*.msi) "dist/$name.msi" }
+          # the portable version: the app itself, which needs no installing (its page is built into the .exe)
+          Copy-Item target/${{ matrix.target }}/release/inventario-registro.exe "dist/$name-portable.exe"
           Compress-Archive -Path target/${{ matrix.target }}/release/inventario-registro-cli.exe -DestinationPath "dist/inventario-registro-cli_$($env:LABEL)_windows-${{ matrix.arch }}.zip"
           Get-ChildItem dist
       - uses: actions/upload-artifact@v7
         with:
           path: dist/Registro-de-equipos_${{ env.LABEL }}_windows-${{ matrix.arch }}-setup.exe
+          archive: false
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v7
+        with:
+          path: dist/Registro-de-equipos_${{ env.LABEL }}_windows-${{ matrix.arch }}-portable.exe
           archive: false
           if-no-files-found: error
       - uses: actions/upload-artifact@v7
