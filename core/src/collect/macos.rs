@@ -199,7 +199,8 @@ pub fn parse(input: &Inputs) -> Facts {
     if ram.replaceable == "yes" && !modules.is_empty() {
         ram.modules = Some(modules.len() as u32);
         ram.module_gb = number_and_unit(&text(&modules[0]["dimm_size"])).map(|(n, _)| n);
-        ram.form_factor = if f.chassis == "laptop" { "SO-DIMM" } else { "DIMM" }.into();
+        // laptops, iMacs and the Mac mini take laptop-size SO-DIMM modules; only the Mac Pro takes full-size DIMMs
+        ram.form_factor = if identifier.starts_with("MacPro") { "DIMM" } else { "SO-DIMM" }.into();
     }
     f.ram = Some(ram);
 

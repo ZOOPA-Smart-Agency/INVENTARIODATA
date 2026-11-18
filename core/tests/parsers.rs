@@ -384,3 +384,26 @@ fn windows_battery_warnings() {
     assert_eq!(laptop(serde_json::json!({"Full": null, "Design": null, "Present": true, "Admin": false})).1, vec!["battery_needs_admin"]);
     assert_eq!(laptop(serde_json::json!({"Full": null, "Design": null, "Present": true, "Admin": true})).1, vec!["battery_unknown"]);
 }
+
+#[test]
+fn mac_memory_modules() {
+    let mac = |identifier: &str, machine: &str| {
+        let profiler = serde_json::json!({
+            "SPHardwareDataType": [{"machine_model": identifier, "machine_name": machine, "physical_memory": "16 GB"}],
+            "SPMemoryDataType": [{"is_memory_upgradeable": "Yes", "_items": [
+                {"dimm_size": "8 GB", "dimm_type": "DDR3", "dimm_speed": "1600 MHz"},
+                {"dimm_size": "8 GB", "dimm_type": "DDR3", "dimm_speed": "1600 MHz"}
+            ]}]
+        });
+        let f = macos::parse(&macos::Inputs {
+            profiler, cpu_brand: "Intel(R) Core(TM) i5-4670 CPU @ 3.40GHz".into(), product_version: String::new(),
+            hardware_ports: String::new(), filevault: String::new(), directory: None, ioreg_battery: String::new(),
+            hostname: String::new(), screen_mm: None, nvram_oclp: String::new(), nvram_opencore: String::new(), oclp_patches: String::new(),
+        });
+        f.ram.unwrap().form_factor
+    };
+    assert_eq!(mac("iMac14,2", "iMac"), "SO-DIMM");
+    assert_eq!(mac("Macmini7,1", "Mac mini"), "SO-DIMM");
+    assert_eq!(mac("MacBookPro9,2", "MacBook Pro"), "SO-DIMM");
+    assert_eq!(mac("MacPro5,1", "Mac Pro"), "DIMM");
+}
