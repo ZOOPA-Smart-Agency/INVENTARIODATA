@@ -48,6 +48,10 @@ pub struct Inputs {
     pub disk_links: HashMap<String, String>,
     /// `ethtool` for each Ethernet port ("eth0" -> its output), for the speeds it supports
     pub ethtool: HashMap<String, String>,
+    /// `smartctl -j -H -A` for each drive ("sda" -> its JSON), with root and smartmontools installed
+    pub smart: HashMap<String, Value>,
+    /// the battery's cycle_count, when it has one
+    pub battery_cycles: Option<u32>,
 }
 
 /// The link speed /sys reports for a drive: SATA through its ata link, NVMe through its PCI device.
@@ -93,6 +97,10 @@ pub fn collect() -> Facts {
             get("energy_full").zip(get("energy_full_design")).or_else(|| get("charge_full").zip(get("charge_full_design")))
         })
     });
+    let battery_cycles = std::fs::read_dir("/sys/class/power_supply").ok().and_then(|entries| {
+        entries.flatten().map(|e| e.path()).filter(|p| p.file_name().map_or(false, |n| n.to_string_lossy().starts_with("BAT")))
+            .find_map(|p| read(&format!("{}/cycle_count", p.display())).and_then(|v| v.parse::<u32>().ok()).filter(|c| *c > 0))
+    });
     let edid = std::fs::read_dir("/sys/class/drm").ok().and_then(|entries| {
         entries.flatten().map(|e| e.path())
             .filter(|p| { let n = p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(); n.contains("-eDP-") || n.contains("-LVDS-") || n.contains("-DSI-") })
@@ -102,6 +110,16 @@ pub fn collect() -> Facts {
     let lsblk: Value = run("lsblk", &["-J", "-b", "-o", "NAME,SIZE,ROTA,TRAN,TYPE,RM,MODEL,MOUNTPOINT"]).and_then(|s| serde_json::from_str(&s).ok()).unwrap_or(Value::Null);
     let disk_links = util::list(&lsblk["blockdevices"]).iter().map(|d| util::text(&d["name"]))
         .filter_map(|name| disk_link(&name).map(|speed| (name, speed))).collect();
+    // the drives' own health data (SMART), read only; smartctl needs root and the smartmontools package
+    let smart = if is_root {
+        util::list(&lsblk["blockdevices"]).iter().map(|d| util::text(&d["name"]))
+            .filter(|n| !["loop", "zram", "ram", "sr", "fd", "nbd", "dm-", "md"].iter().any(|p| n.starts_with(p)))
+            .filter_map(|n| util::run_timeout("smartctl", &["-j", "-H", "-A", &format!("/dev/{n}")], 15)
+                .and_then(|out| serde_json::from_str::<Value>(&out).ok()).map(|j| (n, j)))
+            .collect()
+    } else {
+        HashMap::new()
+    };
     let ethtool = nets.iter().filter(|n| n.physical && !n.wireless).filter_map(|n| run("ethtool", &[&n.name]).map(|out| (n.name.clone(), out))).collect();
     parse(&Inputs {
         dmi,
@@ -123,6 +141,8 @@ pub fn collect() -> Facts {
         hci: run("hciconfig", &["-a"]).unwrap_or_default(),
         disk_links,
         ethtool,
+        smart,
+        battery_cycles,
     })
 }
 
@@ -259,7 +279,8 @@ pub fn parse(i: &Inputs) -> Facts {
         };
         let replaceable = util::pc_disk_replaceable(kind, &connector, &tran, &text(&dev["model"]));
         let form_factor = util::pc_disk_form(kind, &connector, replaceable, &f.chassis).into();
-        f.disks.push(Disk { gb: util::disk_gb(bytes), kind: kind.into(), connector, replaceable: replaceable.into(), form_factor });
+        let (health, wear_pct, hours) = i.smart.get(&name).map(smart_health).unwrap_or_default();
+        f.disks.push(Disk { gb: util::disk_gb(bytes), kind: kind.into(), connector, replaceable: replaceable.into(), form_factor, health, wear_pct, hours });
     }
 
     // lspci -mm: 00:02.0 "VGA compatible controller" "Intel Corporation" "Alder Lake-P GT2 [Iris Xe Graphics]" ...
@@ -331,6 +352,7 @@ pub fn parse(i: &Inputs) -> Facts {
             f.battery = Some(Battery { health_pct: (full / design * 100.0).round().min(100.0) });
         }
     }
+    f.battery_cycles = i.battery_cycles;
     if let Some(edid) = &i.edid {
         if edid.len() > 22 {
             f.screen_inches = util::inches_from_cm(edid[21] as f64, edid[22] as f64);
@@ -387,6 +409,28 @@ pub fn bt_from_hciconfig(hci: &str) -> String {
 }
 
 /// Every device type in the lsblk tree (to spot "crypt", which LUKS uses).
+/// A drive's health from `smartctl -j -H -A`: overall result, SSD wear (percent of rated life used) and hours on.
+/// NVMe drives give the wear directly; SATA SSDs through one of the wear attributes, whose value counts down from 100.
+pub fn smart_health(j: &Value) -> (String, Option<f64>, Option<u32>) {
+    let mut health = match &j["smart_status"]["passed"] {
+        Value::Bool(true) => "ok",
+        Value::Bool(false) => "failing",
+        _ => "",
+    }.to_string();
+    let nvme = &j["nvme_smart_health_information_log"];
+    if health == "ok" && num(&nvme["critical_warning"]).is_some_and(|w| w > 0.0) {
+        health = "warning".into(); // spare space running out, too hot, read-only...
+    }
+    let wear = num(&nvme["percentage_used"]).or_else(|| {
+        // SSD_Life_Left (231), Percent_Lifetime_Remain (202), Media_Wearout_Indicator (233), Wear_Leveling_Count (177)
+        list(&j["ata_smart_attributes"]["table"]).iter()
+            .find(|a| [231.0, 202.0, 233.0, 177.0].contains(&num(&a["id"]).unwrap_or(0.0)))
+            .and_then(|a| num(&a["value"])).filter(|v| *v <= 100.0).map(|v| 100.0 - v)
+    });
+    let hours = num(&j["power_on_time"]["hours"]).or_else(|| num(&nvme["power_on_hours"])).map(|h| h as u32);
+    (health, wear, hours)
+}
+
 /// Whether the volume mounted at "/" is (inside) an encrypted one; None when no "/" is listed.
 fn root_encrypted(value: &Value, under_crypt: bool) -> Option<bool> {
     for dev in list(value) {

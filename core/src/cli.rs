@@ -136,7 +136,9 @@ fn print_facts(f: &Facts) {
     if let Some(ram) = &f.ram { line("Memory", ram.gb.map(|g| format!("{g} GB {}", ram.kind)).unwrap_or_default()); }
     line("Drives", f.disks.iter().map(|d| {
         let size = if d.gb >= 1000.0 { format!("{} TB", (d.gb / 100.0).round() / 10.0) } else { format!("{} GB", d.gb) };
-        [size, d.kind.clone(), d.connector.clone(), d.form_factor.clone()].into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join(" ")
+        let health = match d.health.as_str() { "ok" => "(healthy)".to_string(), "warning" => "(warnings)".into(), "failing" => "(FAILING)".into(), _ => String::new() };
+        let wear = d.wear_pct.map(|w| format!("· {w}% worn")).unwrap_or_default();
+        [size, d.kind.clone(), d.connector.clone(), d.form_factor.clone(), health, wear].into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join(" ")
     }).collect::<Vec<_>>().join(", "));
     line("Graphics", f.gpus.iter().map(|g| g.name.clone()).collect::<Vec<_>>().join(", "));
     if let Some(os) = &f.os {
@@ -146,7 +148,8 @@ fn print_facts(f: &Facts) {
         line("System", format!("{name} {} {}{patched}", os.version, os.edition));
     }
     if let Some(inches) = f.screen_inches { line("Screen", format!("{inches}\"")); }
-    if let Some(b) = &f.battery { line("Battery", format!("{}%", b.health_pct)); }
+    let cycles = f.battery_cycles.map(|c| format!(" · {c} cycles")).unwrap_or_default();
+    if let Some(b) = &f.battery { line("Battery", format!("{}%{cycles}", b.health_pct)); } else if !cycles.is_empty() { line("Battery", cycles.trim_start_matches(" · ").to_string()); }
     line("Encryption", f.encryption.clone());
     line("Network", f.nics.iter().map(|n| {
         let kind = if n.kind == "wifi" { format!("Wi-Fi {}", n.wifi_gen).trim().to_string() } else { "Ethernet".into() };

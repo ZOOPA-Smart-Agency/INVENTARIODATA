@@ -600,9 +600,60 @@ fn windows_script_output_end_to_end() {
     assert_eq!((d.gb, d.kind.as_str(), d.connector.as_str(), d.replaceable.as_str(), d.form_factor.as_str()), (1000.0, "SSD", "NVMe", "yes", "M.2"));
     assert_eq!(f.screen_inches, Some(14.0));
     assert_eq!(f.battery.as_ref().unwrap().health_pct, 97.0);
+    assert_eq!(f.battery_cycles, Some(37)); // from the battery report: WMI said 0
+    assert_eq!((d.health.as_str(), d.wear_pct, d.hours), ("ok", Some(3.0), Some(412)));
     let os = f.os.as_ref().unwrap();
     assert_eq!((os.version.as_str(), os.edition.as_str()), ("11 25H2", "Pro"));
     assert_eq!(f.nics.len(), 1, "only the built-in Wi-Fi: the USB adapter is left out");
     assert_eq!((f.nics[0].wifi_gen.as_str(), f.nics[0].bt_ver.as_str()), ("7", "5.4"));
     assert!(f.warnings.is_empty(), "{:?}", f.warnings);
+}
+
+#[test]
+fn drive_health_and_battery_cycles() {
+    use inventario_core::collect::util::disk_health;
+    assert_eq!((disk_health("Verified"), disk_health("Failing"), disk_health("Not Supported")), ("ok", "failing", ""));
+    assert_eq!((disk_health("Healthy"), disk_health("Warning"), disk_health("Unhealthy"), disk_health("2")), ("ok", "warning", "failing", "failing"));
+
+    // Linux: smartctl -j -H -A
+    let nvme = serde_json::json!({"smart_status": {"passed": true}, "power_on_time": {"hours": 1200},
+        "nvme_smart_health_information_log": {"critical_warning": 0, "percentage_used": 7, "power_on_hours": 1200}});
+    assert_eq!(linux::smart_health(&nvme), ("ok".to_string(), Some(7.0), Some(1200)));
+    let worn = serde_json::json!({"smart_status": {"passed": true}, "nvme_smart_health_information_log": {"critical_warning": 1, "percentage_used": 104}});
+    assert_eq!(linux::smart_health(&worn).0, "warning");
+    let sata = serde_json::json!({"smart_status": {"passed": false}, "power_on_time": {"hours": 30500},
+        "ata_smart_attributes": {"table": [{"id": 9, "value": 65}, {"id": 231, "value": 88}]}});
+    assert_eq!(linux::smart_health(&sata), ("failing".to_string(), Some(12.0), Some(30500)));
+    assert_eq!(linux::smart_health(&serde_json::json!({})), (String::new(), None, None));
+
+    // macOS: smart_status and the cycle count
+    let profiler = serde_json::json!({
+        "SPHardwareDataType": [{"machine_model": "MacBookPro11,1", "machine_name": "MacBook Pro"}],
+        "SPNVMeDataType": [{"_items": [{"_name": "APPLE SSD AP0256", "size_in_bytes": 251000193024u64, "smart_status": "Verified"}]}],
+        "SPPowerDataType": [{"sppower_battery_health_info": {"sppower_battery_health_maximum_capacity": "81%", "sppower_battery_cycle_count": 612}}]
+    });
+    let f = macos::parse(&macos::Inputs {
+        profiler, cpu_brand: "Intel(R) Core(TM) i5-4258U CPU @ 2.40GHz".into(), product_version: String::new(), hardware_ports: String::new(),
+        filevault: String::new(), directory: None, ioreg_battery: String::new(), hostname: String::new(), screen_mm: None,
+        nvram_oclp: String::new(), nvram_opencore: String::new(), oclp_patches: String::new(), media: Default::default(),
+    });
+    assert_eq!((f.disks[0].health.as_str(), f.battery_cycles), ("ok", Some(612)));
+
+    // Linux battery cycles come straight from /sys
+    let mut i = linux::Inputs::default();
+    i.battery = Some((45.0, 50.0));
+    i.battery_cycles = Some(230);
+    assert_eq!(linux::parse(&i).battery_cycles, Some(230));
+}
+
+#[test]
+fn run_timeout_reads_long_output_and_stops_hung_programs() {
+    use inventario_core::collect::util::run_timeout;
+    // 200 KB of output: more than a pipe holds, so it must be read while the program runs
+    let out = run_timeout("sh", &["-c", "head -c 200000 /dev/zero | tr '\\0' x"], 10).unwrap();
+    assert_eq!(out.len(), 200000);
+    let started = std::time::Instant::now();
+    assert_eq!(run_timeout("sleep", &["30"], 1), None);
+    assert!(started.elapsed().as_secs() < 5);
+    assert_eq!(run_timeout("this-program-does-not-exist", &[], 1), None);
 }

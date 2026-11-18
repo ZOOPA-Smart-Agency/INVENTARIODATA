@@ -18,6 +18,9 @@ pub struct Facts {
     pub gpus: Vec<Gpu>,
     pub screen_inches: Option<f64>,
     pub battery: Option<Battery>,
+    /// How many full charge cycles the battery has gone through, when the system says
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub battery_cycles: Option<u32>,
     pub os: Option<Os>,
     pub encryption: String,
     pub domain_joined: String,
@@ -67,6 +70,15 @@ pub struct Disk {
     /// "2.5\"", "3.5\"", "M.2", "Apple (propietario)" when it can be told; "" otherwise
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub form_factor: String,
+    /// What the drive says about itself (SMART), read only: "ok", "warning", "failing", or "" when not said
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub health: String,
+    /// SSDs: how much of its rated life is used, in percent (can pass 100)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wear_pct: Option<f64>,
+    /// Hours the drive has been powered on
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hours: Option<u32>,
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]

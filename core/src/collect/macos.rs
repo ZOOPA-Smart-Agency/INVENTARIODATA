@@ -243,7 +243,9 @@ pub fn parse(input: &Inputs) -> Facts {
         let medium = text(&drive["spsata_medium_type"]);
         let kind = if connector == "NVMe" || connector.starts_with("PCIe") || medium.contains("Solid") { "SSD" } else if medium.contains("Rotational") { "HDD" } else { "" };
         let apple_ssd = kind == "SSD" && (apple_silicon || text(&drive["_name"]).to_uppercase().starts_with("APPLE SSD") || text(&drive["device_model"]).to_uppercase().starts_with("APPLE SSD"));
-        f.disks.push(Disk { gb: util::disk_gb_sold(bytes, apple_ssd), kind: kind.into(), connector, replaceable: util::mac_disk_replaceable(&identifier, apple_silicon).into(), form_factor: String::new() });
+        f.disks.push(Disk { gb: util::disk_gb_sold(bytes, apple_ssd), kind: kind.into(), connector, replaceable: util::mac_disk_replaceable(&identifier, apple_silicon).into(), form_factor: String::new(),
+            // macOS only says whether the drive passes its own checks (SMART): "Verified" or "Failing"
+            health: util::disk_health(&text(&drive["smart_status"])).into(), wear_pct: None, hours: None });
     }
 
     // graphics
@@ -269,12 +271,18 @@ pub fn parse(input: &Inputs) -> Facts {
         if let Some((value, _)) = pct {
             f.battery = Some(Battery { health_pct: value });
         }
+        if let Some(cycles) = num(&power["sppower_battery_health_info"]["sppower_battery_cycle_count"]) {
+            f.battery_cycles = Some(cycles as u32);
+        }
     }
     if f.battery.is_none() && f.chassis == "laptop" {
         let field = |name: &str| input.ioreg_battery.lines().find_map(|l| {
             let l = l.trim().trim_start_matches('|').trim();
             l.strip_prefix(&format!("\"{name}\" = ")).and_then(|v| v.trim().parse::<f64>().ok())
         });
+        if f.battery_cycles.is_none() {
+            f.battery_cycles = field("CycleCount").map(|c| c as u32);
+        }
         let design = field("DesignCapacity");
         let max = field("AppleRawMaxCapacity").or_else(|| field("NominalChargeCapacity")).or_else(|| field("MaxCapacity"));
         if let (Some(max), Some(design)) = (max, design) {

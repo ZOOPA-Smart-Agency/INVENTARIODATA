@@ -361,3 +361,36 @@ pub fn ethernet_mbps_from_name(name: &str) -> Option<u32> {
     }
     None
 }
+
+/// A drive's health as each system words it: macOS "Verified" / "Failing", Windows "Healthy" / "Warning" /
+/// "Unhealthy" (or 0 / 1 / 2) -> "ok", "warning", "failing"; "" when not said ("Not Supported", "Unknown").
+pub fn disk_health(status: &str) -> &'static str {
+    match status.trim().to_lowercase().as_str() {
+        "verified" | "healthy" | "ok" | "passed" | "0" => "ok",
+        "warning" | "1" => "warning",
+        "failing" | "unhealthy" | "failed" | "2" => "failing",
+        _ => "",
+    }
+}
+
+/// Runs a program like `run`, but gives up after a time limit (a failing drive can make health tools hang).
+/// The output is read while the program runs, so a long one cannot fill the pipe and stall it.
+pub fn run_timeout(program: &str, args: &[&str], seconds: u64) -> Option<String> {
+    use std::io::Read;
+    let mut child = std::process::Command::new(program).args(args)
+        .stdin(std::process::Stdio::null()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::null())
+        .spawn().ok()?;
+    let mut stdout = child.stdout.take()?;
+    let reader = std::thread::spawn(move || { let mut out = Vec::new(); let _ = stdout.read_to_end(&mut out); out });
+    let start = std::time::Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => break,
+            Ok(None) if start.elapsed().as_secs() >= seconds => { let _ = child.kill(); let _ = child.wait(); return None; }
+            Ok(None) => std::thread::sleep(std::time::Duration::from_millis(50)),
+            Err(_) => { let _ = child.kill(); return None; }
+        }
+    }
+    let out = reader.join().ok()?;
+    Some(String::from_utf8_lossy(&out).into_owned()) // smartctl uses its exit code for findings, so the output counts whatever it is
+}

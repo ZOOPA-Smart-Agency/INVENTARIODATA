@@ -19,13 +19,17 @@ try { $bitlocker = (New-Object -ComObject Shell.Application).NameSpace($env:Syst
 $full = (Get-CimInstance -Namespace root\wmi -ClassName BatteryFullChargedCapacity | Select-Object -First 1).FullChargedCapacity
 $design = (Get-CimInstance -Namespace root\wmi -ClassName BatteryStaticData | Select-Object -First 1).DesignedCapacity
 $hasBattery = [bool](Get-CimInstance Win32_Battery)
-if ($hasBattery -and (-not $full -or -not $design)) {
+$cycles = (Get-CimInstance -Namespace root\wmi -ClassName BatteryCycleCount | Select-Object -First 1).CycleCount
+if ($hasBattery -and (-not $full -or -not $design -or -not $cycles)) {
   # Windows' battery report: an XML file with each battery's design and full-charge capacity
   $report = Join-Path $env:TEMP ('inventario-battery-' + [guid]::NewGuid() + '.xml')
   powercfg /batteryreport /xml /output $report | Out-Null
   if (Test-Path $report) {
     $b = ([xml](Get-Content $report -Raw)).BatteryReport.Batteries.Battery | Select-Object -First 1
-    if ($b) { $design = [double]$b.DesignCapacity; $full = [double]$b.FullChargeCapacity }
+    if ($b) {
+      if (-not $full -or -not $design) { $design = [double]$b.DesignCapacity; $full = [double]$b.FullChargeCapacity }
+      if (-not $cycles -and $b.CycleCount) { $cycles = [int]$b.CycleCount }
+    }
     Remove-Item $report -Force
   }
 }
@@ -48,13 +52,17 @@ $screen = Get-CimInstance -Namespace root\wmi -ClassName WmiMonitorBasicDisplayP
   cpu = $(($p = @(Get-CimInstance Win32_Processor)) | Select-Object -First 1 Name, MaxClockSpeed, @{ n = 'NumberOfCores'; e = { ($p | Measure-Object NumberOfCores -Sum).Sum } })
   memory = @(Get-CimInstance Win32_PhysicalMemory | Select-Object Capacity, Speed, ConfiguredClockSpeed, SMBIOSMemoryType, FormFactor)
   gpus = @(Get-CimInstance Win32_VideoController | ForEach-Object { [pscustomobject]@{ Name = $_.Name; AdapterRAM = $_.AdapterRAM; Vram = $vram[$_.Name] } })
-  disks = @(Get-PhysicalDisk | ForEach-Object { [pscustomobject]@{ Size = $_.Size; MediaType = [string]$_.MediaType; BusType = [string]$_.BusType; Model = [string]$_.FriendlyName; Spindle = $_.SpindleSpeed } })
+  disks = @(Get-PhysicalDisk | ForEach-Object {
+    # the drive's own health data (SMART), read only: wear and hours need administrator rights, which the app has
+    $r = $_ | Get-StorageReliabilityCounter
+    [pscustomobject]@{ Size = $_.Size; MediaType = [string]$_.MediaType; BusType = [string]$_.BusType; Model = [string]$_.FriendlyName; Spindle = $_.SpindleSpeed;
+      Health = [string]$_.HealthStatus; Wear = $r.Wear; Hours = $r.PowerOnHours } })
   nics = @(Get-NetAdapter -Physical | ForEach-Object { [pscustomobject]@{ Description = $_.InterfaceDescription; MacAddress = $_.MacAddress; Media = [string]$_.PhysicalMediaType; Pnp = [string]$_.PnPDeviceID; Speed = $_.Speed; Modes = ((Get-NetAdapterAdvancedProperty -Name $_.Name -RegistryKeyword '*SpeedDuplex' -ErrorAction SilentlyContinue).ValidDisplayValues -join ';') } })
   os = [pscustomobject]@{ Caption = $os.Caption; EditionID = $cv.EditionID; DisplayVersion = $cv.DisplayVersion; ReleaseId = $cv.ReleaseId; Build = $os.BuildNumber }
   bitlocker = $bitlocker
   wlan = $wlan
   lmp = $lmp
-  battery = [pscustomobject]@{ Full = $full; Design = $design; Present = $hasBattery; Admin = $admin }
+  battery = [pscustomobject]@{ Full = $full; Design = $design; Cycles = $cycles; Present = $hasBattery; Admin = $admin }
   screen = if ($screen) { [pscustomobject]@{ Width = $screen.MaxHorizontalImageSize; Height = $screen.MaxVerticalImageSize } } else { $null }
 } | ConvertTo-Json -Depth 4 -Compress
 "#;
@@ -181,7 +189,11 @@ pub fn parse(j: &Value) -> Facts {
         let kind = match (kind, num(&disk["Spindle"])) { ("", Some(rpm)) if rpm == 0.0 => "SSD", ("", Some(rpm)) if rpm > 0.0 && rpm < 1e9 => "HDD", (k, _) => k };
         let replaceable = util::pc_disk_replaceable(kind, connector, if bus == "19" { "UFS" } else { &bus }, &text(&disk["Model"]));
         let form_factor = util::pc_disk_form(kind, connector, replaceable, &f.chassis).into();
-        f.disks.push(Disk { gb: util::disk_gb(bytes), kind: kind.into(), connector: connector.into(), replaceable: replaceable.into(), form_factor });
+        // wear: percent of the SSD's rated life used (Windows leaves it 0 or empty when the drive does not say)
+        let wear_pct = num(&disk["Wear"]).filter(|w| *w > 0.0 && *w <= 255.0);
+        let hours = num(&disk["Hours"]).filter(|h| *h > 0.0 && *h < 1_000_000.0).map(|h| h as u32);
+        f.disks.push(Disk { gb: util::disk_gb(bytes), kind: kind.into(), connector: connector.into(), replaceable: replaceable.into(), form_factor,
+                            health: util::disk_health(&text(&disk["Health"])).into(), wear_pct, hours });
     }
 
     for nic in list(&j["nics"]) {
@@ -241,6 +253,7 @@ pub fn parse(j: &Value) -> Facts {
         let admin = j["battery"]["Admin"] == Value::Bool(true);
         f.warnings.push(if admin { "battery_unknown" } else { "battery_needs_admin" }.into());
     }
+    f.battery_cycles = num(&j["battery"]["Cycles"]).filter(|c| *c > 0.0 && *c < 100_000.0).map(|c| c as u32);
     if let (Some(w), Some(h)) = (num(&j["screen"]["Width"]), num(&j["screen"]["Height"])) {
         f.screen_inches = util::inches_from_cm(w, h);
     }

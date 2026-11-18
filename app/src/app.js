@@ -29,6 +29,7 @@ const I18N = {
     done_added: 'Añadido como {tag}', done_updated: '{tag} actualizado', done_text: 'Ya puedes cerrar esta ventana.',
     open: 'Ver en el inventario', close: 'Cerrar', version: 'Versión {v}',
     f_serial: 'Número de serie', f_name: 'Nombre del equipo', f_model: 'Modelo', f_cpu: 'Procesador', f_ram: 'Memoria',
+    health_ok: '(estado correcto)', health_warning: '(con avisos)', health_failing: '(FALLANDO)', wear: '· desgaste {n} %', cycles: '{n} ciclos',
     f_disks: 'Almacenamiento', f_gpus: 'Gráficos', f_screen: 'Pantalla', f_battery: 'Salud de la batería', f_os: 'Sistema',
     f_enc: 'Cifrado del disco', f_domain: 'Unido a dominio', f_nics: 'Red', yes: 'Sí', no: 'No', cores: '{n} núcleos',
     w_serial_missing: 'Este equipo no indica su número de serie. Escríbelo abajo (suele estar en una etiqueta del equipo).',
@@ -75,6 +76,7 @@ const I18N = {
     done_added: 'Afegit com a {tag}', done_updated: '{tag} actualitzat', done_text: 'Ja pots tancar aquesta finestra.',
     open: "Mostra a l'inventari", close: 'Tanca', version: 'Versió {v}',
     f_serial: 'Número de sèrie', f_name: "Nom de l'equip", f_model: 'Model', f_cpu: 'Processador', f_ram: 'Memòria',
+    health_ok: '(estat correcte)', health_warning: '(amb avisos)', health_failing: '(FALLANT)', wear: '· desgast {n} %', cycles: '{n} cicles',
     f_disks: 'Emmagatzematge', f_gpus: 'Gràfics', f_screen: 'Pantalla', f_battery: 'Salut de la bateria', f_os: 'Sistema',
     f_enc: 'Xifratge del disc', f_domain: 'Unit a domini', f_nics: 'Xarxa', yes: 'Sí', no: 'No', cores: '{n} nuclis',
     w_serial_missing: "Aquest equip no indica el número de sèrie. Escriu-lo a sota (sol estar en una etiqueta de l'equip).",
@@ -121,6 +123,7 @@ const I18N = {
     done_added: 'Added as {tag}', done_updated: '{tag} updated', done_text: 'You can close this window now.',
     open: 'View in the inventory', close: 'Close', version: 'Version {v}',
     f_serial: 'Serial number', f_name: 'Computer name', f_model: 'Model', f_cpu: 'Processor', f_ram: 'Memory',
+    health_ok: '(healthy)', health_warning: '(warnings)', health_failing: '(FAILING)', wear: '· {n}% worn', cycles: '{n} cycles',
     f_disks: 'Storage', f_gpus: 'Graphics', f_screen: 'Screen', f_battery: 'Battery health', f_os: 'System',
     f_enc: 'Disk encryption', f_domain: 'Joined to a domain', f_nics: 'Network', yes: 'Yes', no: 'No', cores: '{n} cores',
     w_serial_missing: 'This computer does not report its serial number. Type it below (it is usually on a label on the computer).',
@@ -315,10 +318,11 @@ function factRows(f) {
   add('f_model', [f.manufacturer, f.model].filter(Boolean).join(' '));
   if (f.cpu) add('f_cpu', [f.cpu.name, f.cpu.cores ? '· ' + t('cores', { n: f.cpu.cores }) : ''].filter(Boolean).join(' '));
   if (f.ram && f.ram.gb) add('f_ram', [number(f.ram.gb) + ' GB', f.ram.type, f.ram.mts ? number(f.ram.mts) + ' MT/s' : ''].filter(Boolean).join(' '));
-  add('f_disks', (f.disks || []).map((d) => [d.gb >= 1000 ? number(Math.round(d.gb / 100) / 10) + ' TB' : number(d.gb) + ' GB', d.type, d.connector, d.formFactor].filter(Boolean).join(' ')).join(', '));
+  add('f_disks', (f.disks || []).map((d) => [d.gb >= 1000 ? number(Math.round(d.gb / 100) / 10) + ' TB' : number(d.gb) + ' GB', d.type, d.connector, d.formFactor,
+    d.health ? t('health_' + d.health) : '', d.wearPct != null ? t('wear', { n: number(d.wearPct) }) : ''].filter(Boolean).join(' ')).join(', '));
   add('f_gpus', (f.gpus || []).map((g) => g.name + (g.vramGb ? ' (' + number(g.vramGb) + ' GB)' : '')).join(', '));
   if (f.screenInches) add('f_screen', number(f.screenInches) + '"');
-  if (f.battery) add('f_battery', number(f.battery.healthPct) + ' %');
+  if (f.battery || f.batteryCycles) add('f_battery', [f.battery ? number(f.battery.healthPct) + ' %' : '', f.batteryCycles ? t('cycles', { n: number(f.batteryCycles) }) : ''].filter(Boolean).join(' · '));
   if (f.os) {
     const family = { mac: 'macOS', win: 'Windows', linux: 'Linux' }[f.os.family] || f.os.family;
     const oclp = f.oclp ? (f.oclp === 'yes' ? 'OpenCore' : 'OCLP ' + f.oclp) : '';
