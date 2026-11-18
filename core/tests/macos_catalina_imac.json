@@ -1,0 +1,298 @@
+{
+ "SPDisplaysDataType": [
+  {
+   "_name": "kHW_NVidiaGeForceGTX775MItem",
+   "spdisplays_device-id": "0x119d",
+   "spdisplays_metal": "spdisplays_metalfeaturesetfamily14",
+   "spdisplays_ndrvs": [
+    {
+     "_IODisplayEDID": "",
+     "_name": "iMac",
+     "_spdisplays_display-product-id": "b005",
+     "_spdisplays_display-serial-number2": "0",
+     "_spdisplays_display-vendor-id": "610",
+     "_spdisplays_display-week": "28",
+     "_spdisplays_display-year": "2012",
+     "_spdisplays_displayID": "42c0140",
+     "_spdisplays_displayPath": "IOService:/AppleACPIPlatformExpert/PCI0@0/AppleACPIPCI/P0P2@1/IOPP/GFX0@0/NVDA,Display-A@0/NVDA",
+     "_spdisplays_displayport_device": {
+      "_name": "spdisplays_displayport_info",
+      "spdisplays_displayport_current_bandwidth": " 2.70 Gbps",
+      "spdisplays_displayport_current_lanes": "4",
+      "spdisplays_displayport_current_spread": "<= 0.5%",
+      "spdisplays_displayport_DPCD_version": "1.1",
+      "spdisplays_displayport_errors_lane0": "0",
+      "spdisplays_displayport_errors_lane1": "0",
+      "spdisplays_displayport_errors_lane2": "0",
+      "spdisplays_displayport_errors_lane3": "0",
+      "spdisplays_displayport_hdcp_capability": "spdisplays_displayport_hdcp_capable",
+      "spdisplays_displayport_max_bandwidth": "2.70 Gbps",
+      "spdisplays_displayport_max_lanes": "4",
+      "spdisplays_displayport_max_spread": "0.5%",
+      "spdisplays_displayport_sink_ascii_name": "MN27d3",
+      "spdisplays_displayport_sink_chip_version": " 1.02",
+      "spdisplays_displayport_sink_count": "1",
+      "spdisplays_displayport_sink_sw_version": " 5",
+      "spdisplays_displayport_sink_vendor": "00 10 fa",
+      "spdisplays_displayport_valid_error_lane0": "1",
+      "spdisplays_displayport_valid_error_lane1": "1",
+      "spdisplays_displayport_valid_error_lane2": "1",
+      "spdisplays_displayport_valid_error_lane3": "1"
+     },
+     "_spdisplays_displayRegID": "6923",
+     "_spdisplays_edid": "",
+     "_spdisplays_pixels": "2560 x 1440",
+     "_spdisplays_resolution": "2560 x 1440",
+     "spdisplays_ambient_brightness": "spdisplays_no",
+     "spdisplays_connection_type": "spdisplays_internal",
+     "spdisplays_depth": "CGSThirtytwoBitColor",
+     "spdisplays_display_type": "spdisplays_LCD",
+     "spdisplays_main": "spdisplays_yes",
+     "spdisplays_mirror": "spdisplays_off",
+     "spdisplays_online": "spdisplays_yes",
+     "spdisplays_pixelresolution": "spdisplays_qhd",
+     "spdisplays_resolution": "2560 x 1440"
+    }
+   ],
+   "spdisplays_pcie_width": "x16",
+   "spdisplays_revision-id": "0x00a2",
+   "spdisplays_rom-revision": "3782",
+   "spdisplays_vendor": "sppci_vendor_Nvidia",
+   "spdisplays_vram": "2 GB",
+   "sppci_bus": "spdisplays_pcie_device",
+   "sppci_device_type": "spdisplays_gpu",
+   "sppci_model": "NVIDIA GeForce GTX 775M"
+  }
+ ],
+ "SPEthernetDataType": [
+  {
+   "_name": "Broadcom 57766-A1",
+   "spethernet_BSD_Name": "en0",
+   "spethernet_BUNDLE_IDentifier": "AppleBCM5701Ethernet.kext",
+   "spethernet_bus": "spethernet_pci_device",
+   "spethernet_device_type": "spethernet_ethernet",
+   "spethernet_device-id": "0x1686",
+   "spethernet_FIRMWARE_VERSION": "57766a-v1.15",
+   "spethernet_kext_path": "/System/Library/Extensions/IONetworkingFamily.kext/Contents/PlugIns/AppleBCM5701Ethernet.kext",
+   "spethernet_link-width": "x1",
+   "spethernet_name": "ethernet",
+   "spethernet_revision-id": "0x0001",
+   "spethernet_SleepProxyCapable": "00:1c:42:00:00:01",
+   "spethernet_subsystem-id": "0x1686",
+   "spethernet_subsystem-vendor-id": "0x14e4",
+   "spethernet_vendor-id": "0x14e4",
+   "spethernet_version": "10.3.5"
+  }
+ ],
+ "SPHardwareDataType": [
+  {
+   "_name": "hardware_overview",
+   "boot_rom_version": "433.140.2.0.0",
+   "cpu_type": "Quad-Core Intel Core i5",
+   "current_processor_speed": "3,4 GHz",
+   "l2_cache_core": "256 KB",
+   "l3_cache": "6 MB",
+   "machine_model": "iMac14,2",
+   "machine_name": "iMac",
+   "number_processors": 4,
+   "packages": 1,
+   "physical_memory": "16 GB",
+   "platform_UUID": "00000000-0000-0000-0000-000000000000",
+   "serial_number": "C02TEST0F8JC",
+   "SMC_version_system": "2.15f7"
+  }
+ ],
+ "SPMemoryDataType": [
+  {
+   "_items": [
+    {
+     "_name": "BANK 0/DIMM0",
+     "dimm_manufacturer": "0x830B",
+     "dimm_part_number": "0x4D3253344736344343383842344E2D444920",
+     "dimm_serial_number": "0x00000000",
+     "dimm_size": "4 GB",
+     "dimm_speed": "1600 MHz",
+     "dimm_status": "ok",
+     "dimm_type": "DDR3"
+    },
+    {
+     "_name": "BANK 1/DIMM0",
+     "dimm_manufacturer": "0x80AD",
+     "dimm_part_number": "0x484D54343531533641465238412D50422020",
+     "dimm_serial_number": "0x00000000",
+     "dimm_size": "4 GB",
+     "dimm_speed": "1600 MHz",
+     "dimm_status": "ok",
+     "dimm_type": "DDR3"
+    },
+    {
+     "_name": "BANK 0/DIMM1",
+     "dimm_manufacturer": "0x830B",
+     "dimm_part_number": "0x4D3253344736344343383842344E2D444920",
+     "dimm_serial_number": "0x00000000",
+     "dimm_size": "4 GB",
+     "dimm_speed": "1600 MHz",
+     "dimm_status": "ok",
+     "dimm_type": "DDR3"
+    },
+    {
+     "_name": "BANK 1/DIMM1",
+     "dimm_manufacturer": "0x80AD",
+     "dimm_part_number": "0x484D54343531533641465238412D50422020",
+     "dimm_serial_number": "0x00000000",
+     "dimm_size": "4 GB",
+     "dimm_speed": "1600 MHz",
+     "dimm_status": "ok",
+     "dimm_type": "DDR3"
+    }
+   ],
+   "_name": "global_name",
+   "global_ecc_state": "ecc_disabled",
+   "is_memory_upgradeable": "Yes"
+  }
+ ],
+ "SPNVMeDataType": [],
+ "SPPowerDataType": [
+  {
+   "_name": "sppower_information",
+   "AC Power": {
+    "Automatic Restart On Power Loss": "No",
+    "AutoPowerOff Delay": 28800,
+    "AutoPowerOff Enabled": 1,
+    "Current Power Source": "TRUE",
+    "DarkWakeBackgroundTasks": true,
+    "Disk Sleep Timer": 0,
+    "Display Sleep Timer": 20,
+    "Display Sleep Uses Dim": "Yes",
+    "Hibernate Mode": 0,
+    "High Standby Delay": 86400,
+    "PrioritizeNetworkReachabilityOverSleep": 0,
+    "Sleep On Power Button": "Yes",
+    "Standby Battery Threshold": 50,
+    "Standby Delay": 86400,
+    "Standby Enabled": 0,
+    "System Sleep Timer": 0,
+    "Wake On LAN": "Yes"
+   }
+  },
+  {
+   "_name": "sppower_hwconfig_information",
+   "sppower_ups_installed": "FALSE"
+  }
+ ],
+ "SPSerialATADataType": [
+  {
+   "_items": [
+    {
+     "_name": "APPLE HDD ST1000DM003",
+     "bsd_name": "disk0",
+     "detachable_drive": "no",
+     "device_model": "APPLE HDD ST1000DM003                   ",
+     "device_revision": "AP18    ",
+     "device_serial": "TESTDISK1",
+     "partition_map_type": "guid_partition_map_type",
+     "removable_media": "no",
+     "size": "1 TB",
+     "size_in_bytes": 1000204886016,
+     "smart_status": "Verified",
+     "spsata_medium_type": "Rotational",
+     "spsata_ncq": "Yes",
+     "spsata_ncq_depth": "32",
+     "spsata_rotational_rate": 7200,
+     "volumes": [
+      {
+       "_name": "EFI",
+       "bsd_name": "disk0s1",
+       "file_system": "MS-DOS FAT32",
+       "iocontent": "EFI",
+       "size": "209,7 MB",
+       "size_in_bytes": 209715200,
+       "volume_uuid": "00000000-0000-0000-0000-000000000000"
+      },
+      {
+       "_name": "disk0s2",
+       "bsd_name": "disk0s2",
+       "iocontent": "Apple_APFS",
+       "size": "1 TB",
+       "size_in_bytes": 999995129856
+      }
+     ]
+    }
+   ],
+   "_name": "Intel 8 Series Chipset",
+   "spsata_negotiatedlinkspeed": "3 Gigabit",
+   "spsata_physical_interconnect": "SATA",
+   "spsata_portdescription": "AHCI Version 1.30 Supported",
+   "spsata_portspeed": "6 Gigabit",
+   "spsata_product": "8 Series Chipset",
+   "spsata_vendor": "Intel"
+  }
+ ],
+ "SPAirPortDataType": [
+  {
+   "spairport_airport_interfaces": [
+    {
+     "_name": "en1",
+     "spairport_airdrop_channel": 44,
+     "spairport_caps_airdrop": "spairport_caps_supported",
+     "spairport_caps_autounlock": "spairport_caps_supported",
+     "spairport_caps_wow": "spairport_caps_supported",
+     "spairport_status_information": "spairport_status_connected",
+     "spairport_supported_channels": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      36,
+      40,
+      44,
+      48,
+      52,
+      56,
+      60,
+      64,
+      100,
+      104,
+      108,
+      112,
+      116,
+      120,
+      124,
+      128,
+      132,
+      136,
+      140,
+      149,
+      153,
+      157,
+      161
+     ],
+     "spairport_supported_phymodes": "802.11 a/b/g/n/ac",
+     "spairport_wireless_card_type": "spairport_wireless_card_type_airport_extreme (0x14E4, 0x111)",
+     "spairport_wireless_country_code": "ES",
+     "spairport_wireless_firmware_version": "Broadcom BCM43xx 1.0 (7.77.111.1 AirPortDriverBrcmNIC-1615.7)",
+     "spairport_wireless_locale": "ETSI",
+     "spairport_wireless_mac_address": "00:1c:42:00:00:02"
+    }
+   ],
+   "spairport_software_information": {
+    "spairport_corewlan_version": "13.0 ((null))",
+    "spairport_corewlankit_version": "13.0 ((null))",
+    "spairport_diagnostics_version": "1.0 (910)",
+    "spairport_extra_version": "13.0 ((null))",
+    "spairport_family_version": "12.0 (1200.12.2b1)",
+    "spairport_profiler_version": "12.0 (1500)",
+    "spairport_utility_version": "spairport_not_installed"
+   }
+  }
+ ]
+}

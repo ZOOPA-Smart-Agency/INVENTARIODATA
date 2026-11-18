@@ -657,3 +657,63 @@ fn run_timeout_reads_long_output_and_stops_hung_programs() {
     assert!(started.elapsed().as_secs() < 5);
     assert_eq!(run_timeout("this-program-does-not-exist", &[], 1), None);
 }
+
+#[test]
+fn mac_ethernet_chip_across_macos_versions() {
+    use macos::{ethernet_chip, ethernet_entry};
+    let mac = "00:1C:42:AB:CD:01";
+    // newer macOS: BSD name field
+    let p = json!({"SPEthernetDataType": [{"_name": "ethernet", "spethernet_BSD_Device_Name": "en0",
+        "spethernet_vendor-id": "0x14e4", "spethernet_device-id": "0x16b4", "spethernet_subsystem-vendor-id": "0x106b"}]});
+    assert_eq!(ethernet_chip(&ethernet_entry(&p, "en0", mac, 1).unwrap()), "Broadcom BCM57765");
+    // another BSD spelling, nested under _items, upper-case ids
+    let p = json!({"SPEthernetDataType": [{"_items": [{"_name": "en0", "spethernet_bsd_name": "en0",
+        "spethernet_vendor_id": "0x14E4", "spethernet_device_id": "0x16B4"}]}]});
+    assert_eq!(ethernet_chip(&ethernet_entry(&p, "en0", mac, 1).unwrap()), "Broadcom BCM57765");
+    // no BSD name, found by MAC address
+    let p = json!({"SPEthernetDataType": [
+        {"_name": "Ethernet", "spethernet_mac-address": "aa:bb:cc:dd:ee:ff", "spethernet_vendor-id": "0x8086", "spethernet_device-id": "0x1533"},
+        {"_name": "Ethernet", "spethernet_mac-address": "00-1c-42-ab-cd-01", "spethernet_vendor-id": "0x14e4", "spethernet_device-id": "0x16b4"}]});
+    assert_eq!(ethernet_chip(&ethernet_entry(&p, "en0", mac, 2).unwrap()), "Broadcom BCM57765");
+    // no BSD name nor MAC: the only entry of a Mac with one port
+    let p = json!({"SPEthernetDataType": [{"_name": "ethernet", "spethernet_vendor-id": "0x14e4", "spethernet_device-id": "0x16b4"}]});
+    assert_eq!(ethernet_chip(&ethernet_entry(&p, "en0", mac, 1).unwrap()), "Broadcom BCM57765");
+    assert!(ethernet_entry(&p, "en0", mac, 2).is_none(), "two ports, one entry: unknown which");
+    // an entry naming another device is never used as a fallback
+    let p = json!({"SPEthernetDataType": [{"spethernet_BSD_Device_Name": "en5", "spethernet_vendor-id": "0x14e4"}]});
+    assert!(ethernet_entry(&p, "en0", mac, 1).is_none());
+    // vendor given by name; unknown device id
+    assert_eq!(ethernet_chip(&json!({"_name": "ethernet", "spethernet_vendor": "Broadcom Limited"})), "Broadcom Ethernet");
+    // a chip name macOS gives is kept, a BSD name is not taken as one
+    assert_eq!(ethernet_chip(&json!({"_name": "Aquantia AQC113"})), "Aquantia AQC113");
+    assert_eq!(ethernet_chip(&json!({"_name": "en0"})), "");
+    assert_eq!(ethernet_chip(&json!({"_name": "ethernet"})), "");
+}
+
+/// What macOS 10.15 Catalina printed on an iMac14,2 (late 2013, 27"), serials and MAC addresses replaced.
+#[test]
+fn mac_catalina_imac() {
+    let profiler: serde_json::Value = serde_json::from_str(include_str!("macos_catalina_imac.json")).unwrap();
+    let mut media = HashMap::new();
+    media.insert("en0".to_string(), "\tmedia: 1000baseT <full-duplex> (none)\n\tstatus: inactive\n\tsupported media:\n\t\tmedia none\n\t\tmedia autoselect\n\t\tmedia 10baseT/UTP mediaopt full-duplex\n\t\tmedia 100baseTX mediaopt full-duplex\n\t\tmedia 1000baseT mediaopt full-duplex\n".to_string());
+    let f = macos::parse(&macos::Inputs {
+        profiler, cpu_brand: "Intel(R) Core(TM) i5-4670 CPU @ 3.40GHz".into(), product_version: "10.15.7".into(),
+        hardware_ports: "Hardware Port: Ethernet\nDevice: en0\nEthernet Address: 00:1c:42:00:00:01\n\nHardware Port: Wi-Fi\nDevice: en1\nEthernet Address: 00:1c:42:00:00:02\n\nHardware Port: Bluetooth PAN\nDevice: en4\nEthernet Address: 00:1c:42:00:00:03\n\nHardware Port: Thunderbolt 1\nDevice: en2\nEthernet Address: 82:0d:46:00:00:80\n\nHardware Port: Thunderbolt Bridge\nDevice: bridge0\nEthernet Address: 82:0d:46:00:00:80\n".into(),
+        filevault: "FileVault is Off.".into(), directory: Some(String::new()), ioreg_battery: String::new(), hostname: "ZIMC035".into(),
+        screen_mm: Some((597.0, 336.0)), nvram_oclp: String::new(), nvram_opencore: String::new(), oclp_patches: String::new(), media,
+    });
+    assert_eq!((f.model.as_str(), f.chassis.as_str(), f.screen_inches), ("iMac (iMac14,2)", "all_in_one", Some(27.0)));
+    assert_eq!(f.cpu.as_ref().map(|c| (c.name.as_str(), c.cores)), Some(("Intel Core i5-4670", Some(4))));
+    let ram = f.ram.as_ref().unwrap();
+    assert_eq!((ram.gb, ram.kind.as_str(), ram.mts, ram.modules, ram.module_gb, ram.form_factor.as_str(), ram.replaceable.as_str()),
+               (Some(16.0), "DDR3", Some(1600.0), Some(4), Some(4.0), "SO-DIMM", "yes"));
+    let d = &f.disks[0];
+    assert_eq!((f.disks.len(), d.gb, d.kind.as_str(), d.form_factor.as_str(), d.replaceable.as_str(), d.health.as_str()), (1, 1000.0, "HDD", "3.5\"", "yes", "ok"));
+    assert_eq!(f.gpus.iter().map(|g| (g.name.as_str(), g.kind.as_str(), g.vram_gb)).collect::<Vec<_>>(), [("NVIDIA GeForce GTX 775M", "dedicated", Some(2.0))]);
+    assert_eq!(f.os.as_ref().map(|o| o.version.as_str()), Some("10.15 Catalina"));
+    assert_eq!((f.encryption.as_str(), f.domain_joined.as_str(), f.battery.is_none()), ("no", "no", true));
+    assert_eq!(f.nics.len(), 2, "the built-in Ethernet and Wi-Fi only");
+    assert_eq!(f.nics.iter().find(|n| n.kind == "wifi").map(|n| n.wifi_gen.as_str()), Some("5"));
+    let eth = f.nics.iter().find(|n| n.kind == "eth").unwrap();
+    assert_eq!((eth.model.as_str(), eth.speed_mbps), ("Broadcom 57766-A1", Some(1000)));
+}

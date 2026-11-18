@@ -308,6 +308,9 @@ pub fn parse(input: &Inputs) -> Facts {
     let airport: Vec<Value> = items(&input.profiler, "SPAirPortDataType").into_iter()
         .flat_map(|entry| util::list(&entry["spairport_airport_interfaces"]).into_iter().cloned().collect::<Vec<_>>())
         .collect();
+    let eth_ports = input.hardware_ports.lines()
+        .filter(|l| l.strip_prefix("Hardware Port:").map(|p| p.trim()).is_some_and(|p| p == "Ethernet" || (p.starts_with("Ethernet ") && !p.contains("Adapter"))))
+        .count();
     for block in input.hardware_ports.split("\n\n") {
         let field = |name: &str| block.lines().find_map(|l| l.strip_prefix(name).map(|v| v.trim().to_string())).unwrap_or_default();
         let port = field("Hardware Port:");
@@ -322,8 +325,8 @@ pub fn parse(input: &Inputs) -> Facts {
         };
         let mut nic = Nic { kind: kind.into(), mac, ..Nic::default() };
         if kind == "eth" {
-            if let Some(port) = section(&input.profiler, "SPEthernetDataType").into_iter().find(|e| text(&e["spethernet_BSD_Device_Name"]) == device) {
-                nic.model = ethernet_chip(port);
+            if let Some(port) = ethernet_entry(&input.profiler, &device, &nic.mac, eth_ports) {
+                nic.model = ethernet_chip(&port);
             }
             nic.speed_mbps = input.media.get(&device).and_then(|out| util::max_ethernet_mbps(out)).or_else(|| util::ethernet_mbps_from_name(&nic.model));
         }
@@ -344,16 +347,45 @@ pub fn parse(input: &Inputs) -> Facts {
     f
 }
 
+/// The first text value among an object's keys whose lowercase name passes `pick`.
+fn field_where(entry: &Value, pick: impl Fn(&str) -> bool) -> String {
+    entry.as_object().into_iter().flatten()
+        .find(|(k, v)| pick(&k.to_lowercase()) && !text(v).is_empty())
+        .map(|(_, v)| text(v)).unwrap_or_default()
+}
+
+/// A MAC address with only its hex digits, lowercase, so "10:DD:B1:..." and "10-dd-b1-..." compare equal.
+fn mac_digits(mac: &str) -> String {
+    mac.chars().filter(|c| c.is_ascii_hexdigit()).collect::<String>().to_lowercase()
+}
+
+/// The SPEthernetDataType entry of a port. The field names differ between macOS versions, so it is found by
+/// any field naming the BSD device ("en0"), else by MAC address, else it is the only entry when the Mac has one port.
+pub fn ethernet_entry(profiler: &Value, device: &str, mac: &str, eth_ports: usize) -> Option<Value> {
+    let entries = items(profiler, "SPEthernetDataType");
+    let mac = mac_digits(mac);
+    entries.iter().find(|e| !device.is_empty() && field_where(e, |k| k.contains("bsd")) == device)
+        .or_else(|| entries.iter().find(|e| mac.len() == 12 && mac_digits(&field_where(e, |k| k.contains("mac") || k.contains("address"))) == mac))
+        .or_else(|| if entries.len() == 1 && eth_ports == 1 && field_where(&entries[0], |k| k.contains("bsd")).is_empty() { entries.first() } else { None })
+        .cloned()
+}
+
 /// A built-in Ethernet port's chip: its own name when macOS gives one, else the maker and PCI device id.
 pub fn ethernet_chip(port: &Value) -> String {
     let name = text(&port["_name"]);
-    if !name.is_empty() && !name.eq_ignore_ascii_case("ethernet") && name.chars().any(|c| c.is_ascii_digit()) {
+    let bsd_name = name.strip_prefix("en").is_some_and(|n| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit()));
+    if !name.is_empty() && !bsd_name && !name.eq_ignore_ascii_case("ethernet") && name.chars().any(|c| c.is_ascii_digit()) {
         return name;
     }
-    let device = text(&port["spethernet_device-id"]).to_lowercase();
-    let vendor = match text(&port["spethernet_vendor-id"]).to_lowercase().as_str() {
+    // the subsystem ids name the computer's maker (Apple), not the chip's
+    let device = field_where(port, |k| !k.contains("subsystem") && (k.contains("device-id") || k.contains("device_id") || k.ends_with("deviceid"))).to_lowercase();
+    let vendor_field = field_where(port, |k| !k.contains("subsystem") && k.contains("vendor")).to_lowercase();
+    let vendor = match vendor_field.as_str() {
         "0x14e4" => "Broadcom", "0x8086" => "Intel", "0x10ec" => "Realtek", "0x11ab" | "0x1b4b" => "Marvell",
-        "0x1d6a" => "Aquantia", "0x106b" => "Apple", _ => return name,
+        "0x1d6a" => "Aquantia", "0x106b" => "Apple",
+        v if v.contains("broadcom") => "Broadcom", v if v.contains("intel") => "Intel", v if v.contains("realtek") => "Realtek",
+        v if v.contains("marvell") => "Marvell", v if v.contains("aquantia") => "Aquantia",
+        _ => return if bsd_name || name.eq_ignore_ascii_case("ethernet") { String::new() } else { name },
     };
     // the PCI device id is not the chip's name; the chips Macs used are known
     let chip = match (vendor, device.as_str()) {
