@@ -146,6 +146,7 @@ fn macos_intel_macbook_pro() {
         nvram_oclp: String::new(),
         nvram_opencore: String::new(),
         oclp_patches: String::new(),
+        media: Default::default(),
     });
     collect::tidy(&mut f);
     assert_eq!(f.serial, "C02XK3JHMD6R");
@@ -155,7 +156,7 @@ fn macos_intel_macbook_pro() {
     assert_eq!((cpu.name.as_str(), cpu.cores, cpu.max_ghz), ("Intel Core i7-8850H", Some(6), Some(2.6)));
     let ram = f.ram.as_ref().unwrap();
     assert_eq!((ram.gb, ram.kind.as_str(), ram.mts, ram.replaceable.as_str()), (Some(16.0), "DDR4", Some(2400.0), "no"));
-    assert_eq!((f.disks[0].gb, f.disks[0].connector.as_str(), f.disks[0].replaceable.as_str()), (500.0, "NVMe", "no")); // a T2 Mac
+    assert_eq!((f.disks[0].gb, f.disks[0].connector.as_str(), f.disks[0].replaceable.as_str()), (512.0, "NVMe", "no")); // a T2 Mac; "APPLE SSD AP0512M" is the 512 GB model
     assert_eq!(f.oclp.as_deref(), Some(""));
     assert_eq!(f.gpus.len(), 2);
     assert_eq!((f.gpus[1].kind.as_str(), f.gpus[1].vram_gb), ("dedicated", Some(4.0)));
@@ -166,7 +167,7 @@ fn macos_intel_macbook_pro() {
     assert_eq!(f.domain_joined, "no");
     assert_eq!(f.nics.len(), 1, "only the built-in Wi-Fi; USB adapters and bridges are left out");
     assert_eq!(f.nics[0].mac, "3C:22:FB:01:02:03");
-    assert_eq!((f.nics[0].model.as_str(), f.nics[0].wifi_gen.as_str()), ("Broadcom BCM7BF", "5"));
+    assert_eq!((f.nics[0].model.as_str(), f.nics[0].wifi_gen.as_str()), ("Broadcom", "5"));
 }
 
 #[test]
@@ -213,10 +214,10 @@ fn ubuntu_inputs(is_root: bool) -> linux::Inputs {
         ]}),
         lspci: "00:02.0 \"VGA compatible controller\" \"Intel Corporation\" \"Raptor Lake-P [Iris Xe Graphics]\" -r04 \"Dell\" \"Device 0c0d\"\n00:14.3 \"Network controller\" \"Intel Corporation\" \"Raptor Lake PCH CNVi WiFi\" -r01 \"Intel Corporation\" \"Wi-Fi 6E AX211 160MHz\"\n00:1f.6 \"Ethernet controller\" \"Intel Corporation\" \"Ethernet Connection (16) I219-LM\" -r01 \"Dell\" \"Device 0c0d\"\n".into(),
         nets: vec![
-            linux::NetDevice { name: "lo".into(), mac: "00:00:00:00:00:00".into(), wireless: false, physical: false, pci_slot: String::new() },
-            linux::NetDevice { name: "wlp0s20f3".into(), mac: "a4:c3:f0:aa:bb:cc".into(), wireless: true, physical: true, pci_slot: "0000:00:14.3".into() },
-            linux::NetDevice { name: "enp0s31f6".into(), mac: "8c:8c:aa:dd:ee:ff".into(), wireless: false, physical: true, pci_slot: "0000:00:1f.6".into() },
-            linux::NetDevice { name: "docker0".into(), mac: "02:42:ac:11:00:01".into(), wireless: false, physical: false, pci_slot: String::new() },
+            linux::NetDevice { name: "lo".into(), mac: "00:00:00:00:00:00".into(), wireless: false, physical: false, pci_slot: String::new(), usb: false },
+            linux::NetDevice { name: "wlp0s20f3".into(), mac: "a4:c3:f0:aa:bb:cc".into(), wireless: true, physical: true, pci_slot: "0000:00:14.3".into(), usb: false },
+            linux::NetDevice { name: "enp0s31f6".into(), mac: "8c:8c:aa:dd:ee:ff".into(), wireless: false, physical: true, pci_slot: "0000:00:1f.6".into(), usb: false },
+            linux::NetDevice { name: "docker0".into(), mac: "02:42:ac:11:00:01".into(), wireless: false, physical: false, pci_slot: String::new(), usb: false },
         ],
         os_release: "PRETTY_NAME=\"Ubuntu 24.04.1 LTS\"\nNAME=\"Ubuntu\"\nVERSION_ID=\"24.04\"\nVERSION=\"24.04.1 LTS (Noble Numbat)\"\nID=ubuntu\n".into(),
         realm: None,
@@ -362,7 +363,7 @@ fn opencore_legacy_patcher() {
             profiler: serde_json::Value::Null, cpu_brand: String::new(), product_version: String::new(),
             hardware_ports: String::new(), filevault: String::new(), directory: None, ioreg_battery: String::new(),
             hostname: String::new(), screen_mm: None,
-            nvram_oclp: oclp.into(), nvram_opencore: opencore.into(), oclp_patches: patches.into(),
+            nvram_oclp: oclp.into(), nvram_opencore: opencore.into(), oclp_patches: patches.into(), media: Default::default(),
         })
     };
     let guid = "4D1FDA02-38C7-4A6A-9CC6-4BCCA8B30102";
@@ -399,6 +400,7 @@ fn mac_memory_modules() {
             profiler, cpu_brand: "Intel(R) Core(TM) i5-4670 CPU @ 3.40GHz".into(), product_version: String::new(),
             hardware_ports: String::new(), filevault: String::new(), directory: None, ioreg_battery: String::new(),
             hostname: String::new(), screen_mm: None, nvram_oclp: String::new(), nvram_opencore: String::new(), oclp_patches: String::new(),
+            media: Default::default(),
         });
         f.ram.unwrap().form_factor
     };
@@ -406,4 +408,201 @@ fn mac_memory_modules() {
     assert_eq!(mac("Macmini7,1", "Mac mini"), "SO-DIMM");
     assert_eq!(mac("MacBookPro9,2", "MacBook Pro"), "SO-DIMM");
     assert_eq!(mac("MacPro5,1", "Mac Pro"), "DIMM");
+}
+
+#[test]
+fn drive_generation_and_form() {
+    use inventario_core::collect::util::{mac_disk_form, max_ethernet_mbps, nvme_connector, pc_disk_form, sata_connector};
+    assert_eq!((sata_connector("6 Gigabit"), sata_connector("3.0 Gb/s"), sata_connector("1.5 Gbps"), sata_connector("")), ("SATA III", "SATA II", "SATA I", "SATA"));
+    assert_eq!((nvme_connector("8.0 GT/s PCIe"), nvme_connector("16.0 GT/s PCIe"), nvme_connector("Unknown")), ("NVMe PCIe 3.0".to_string(), "NVMe PCIe 4.0".to_string(), "NVMe".to_string()));
+    assert_eq!(pc_disk_form("SSD", "NVMe PCIe 4.0", "yes", "laptop"), "M.2");
+    assert_eq!(pc_disk_form("SSD", "NVMe", "no", "laptop"), ""); // soldered
+    assert_eq!((pc_disk_form("HDD", "SATA III", "yes", "laptop"), pc_disk_form("HDD", "SATA III", "yes", "desktop")), ("2.5\"", "3.5\""));
+    assert_eq!(pc_disk_form("SSD", "SATA III", "yes", "laptop"), ""); // 2.5", M.2 or mSATA: not said
+    assert_eq!(mac_disk_form("iMac14,2", "SSD", "SATA III", "yes", Some(27.0)), "2.5\"");
+    assert_eq!(mac_disk_form("iMac14,2", "HDD", "SATA III", "yes", Some(27.0)), "3.5\"");
+    assert_eq!(mac_disk_form("iMac14,1", "HDD", "SATA III", "yes", Some(21.5)), "2.5\"");
+    assert_eq!(mac_disk_form("iMac12,1", "HDD", "SATA II", "yes", Some(21.5)), "3.5\"");
+    assert_eq!(mac_disk_form("MacBookPro11,3", "SSD", "NVMe", "yes", None), "Apple (propietario)");
+    assert_eq!(mac_disk_form("Mac14,2", "SSD", "NVMe", "no", None), "");
+    assert_eq!(max_ethernet_mbps("supported media:\n\tmedia autoselect\n\tmedia 10baseT/UTP <full-duplex>\n\tmedia 100baseTX <full-duplex>\n\tmedia 1000baseT <full-duplex>"), Some(1000));
+    assert_eq!(max_ethernet_mbps("Supported link modes:   10baseT/Half 10baseT/Full\n 100baseT/Full 1000baseT/Full\n 2500baseT/Full"), Some(2500));
+    assert_eq!(max_ethernet_mbps("media 10Gbase-T <full-duplex>"), Some(10000));
+    assert_eq!(max_ethernet_mbps("Auto Negotiation;10 Mbps Half Duplex;100 Mbps Full Duplex;1.0 Gbps Full Duplex"), Some(1000));
+    assert_eq!(max_ethernet_mbps("Auto Negotiation"), None);
+}
+
+#[test]
+fn mac_sata_and_ethernet() {
+    let profiler = serde_json::json!({
+        "SPHardwareDataType": [{"machine_model": "iMac14,2", "machine_name": "iMac"}],
+        "SPSerialATADataType": [{"_name": "Intel 8 Series Chipset", "spsata_negotiatedlinkspeed": "6 Gigabit",
+            "_items": [{"_name": "Samsung SSD 860 EVO 1TB", "size_in_bytes": 1000204886016u64, "spsata_medium_type": "Solid State"}]}],
+        "SPEthernetDataType": [{"_name": "ethernet", "spethernet_BSD_Device_Name": "en0", "spethernet_vendor-id": "0x14e4", "spethernet_device-id": "0x16b4"}]
+    });
+    let mut media = std::collections::HashMap::new();
+    media.insert("en0".to_string(), "supported media:\n\tmedia 10baseT/UTP <full-duplex>\n\tmedia 1000baseT <full-duplex>".to_string());
+    let f = macos::parse(&macos::Inputs {
+        profiler, cpu_brand: "Intel(R) Core(TM) i5-4670 CPU @ 3.40GHz".into(), product_version: String::new(),
+        hardware_ports: "Hardware Port: Ethernet\nDevice: en0\nEthernet Address: 10:dd:b1:f1:15:d0\n".into(), filevault: String::new(),
+        directory: None, ioreg_battery: String::new(), hostname: String::new(), screen_mm: Some((597.0, 336.0)),
+        nvram_oclp: String::new(), nvram_opencore: String::new(), oclp_patches: String::new(), media,
+    });
+    let disk = &f.disks[0];
+    assert_eq!((disk.connector.as_str(), disk.form_factor.as_str(), disk.replaceable.as_str()), ("SATA III", "2.5\"", "yes"));
+    assert_eq!((f.nics[0].model.as_str(), f.nics[0].speed_mbps), ("Broadcom BCM57765", Some(1000)));
+}
+
+#[test]
+fn ethernet_speed_from_the_name() {
+    use inventario_core::collect::util::ethernet_mbps_from_name as by_name;
+    assert_eq!(by_name("Realtek USB GbE Family Controller"), Some(1000));
+    assert_eq!(by_name("Intel(R) Ethernet Connection (16) I219-V"), None); // says nothing: left out
+    assert_eq!(by_name("Realtek Gaming 2.5GbE Family Controller"), Some(2500));
+    assert_eq!(by_name("Intel(R) Ethernet Controller I225-V 2.5G"), Some(2500));
+    assert_eq!(by_name("Aquantia AQC107 10GbE"), Some(10000));
+    assert_eq!(by_name("Realtek PCIe FE Family Controller Fast Ethernet"), Some(100));
+    assert_eq!(by_name("ASIX AX88179 USB 3.0 to Gigabit Ethernet Adapter"), Some(1000));
+}
+
+#[test]
+fn sizes_as_sold() {
+    use inventario_core::collect::util::{disk_gb, disk_gb_sold, ram_gb_from_bytes};
+    let gib = 1024.0 * 1024.0 * 1024.0;
+    assert_eq!(disk_gb(1_024_209_543_168.0), 1000.0); // a "1 TB" drive that holds 1,024 GB
+    assert_eq!(disk_gb(256_060_514_304.0), 256.0);
+    assert_eq!(disk_gb(500_107_862_016.0), 500.0); // a 500 GB drive stays 500
+    assert_eq!(disk_gb(2_048_408_248_320.0), 2000.0);
+    assert_eq!(disk_gb(150_100_000_000.0), 150.0); // no size sold within 3%: the exact size
+    assert_eq!(disk_gb_sold(500_277_792_768.0, true), 512.0); // Apple's "512 GB"
+    assert_eq!(disk_gb_sold(251_000_193_024.0, true), 256.0);
+    assert_eq!(disk_gb_sold(1_000_555_581_440.0, true), 1000.0);
+    assert_eq!(ram_gb_from_bytes(15.6 * gib), 16.0);
+    assert_eq!(ram_gb_from_bytes(7.7 * gib), 8.0);
+    assert_eq!(ram_gb_from_bytes(2.9 * gib), 3.0);
+    assert_eq!(ram_gb_from_bytes(11.8 * gib), 12.0);
+    assert_eq!(ram_gb_from_bytes(17.9 * gib), 18.0);
+}
+
+#[test]
+fn graphics_kind() {
+    use windows::gpu_kind;
+    assert_eq!(gpu_kind("intel arc 140v gpu (16gb)"), "integrated"); // Lunar Lake: built in
+    assert_eq!(gpu_kind("intel arc graphics"), "integrated"); // Meteor Lake: built in
+    assert_eq!(gpu_kind("intel arc a770 graphics"), "dedicated");
+    assert_eq!(gpu_kind("intel arc b580 graphics"), "dedicated");
+    assert_eq!(gpu_kind("intel arc pro a60m graphics"), "dedicated");
+    assert_eq!(gpu_kind("intel iris xe graphics"), "integrated");
+    assert_eq!(gpu_kind("amd radeon 780m graphics"), "integrated");
+    assert_eq!(gpu_kind("amd radeon rx 7600"), "dedicated");
+    assert_eq!(gpu_kind("nvidia rtx a2000 8gb laptop gpu"), "dedicated");
+    assert_eq!(gpu_kind("qualcomm adreno x1-85 gpu"), "integrated");
+}
+
+#[test]
+fn windows_corrections() {
+    let f = windows::parse(&serde_json::json!({
+        "serial": "PF5TSTVA", "chassis": [10],
+        "memory": [{"Capacity": 34359738368u64, "SMBIOSMemoryType": 35, "FormFactor": 12, "ConfiguredClockSpeed": 8533}],
+        "gpus": [{"Name": "Intel(R) Arc(TM) 140V GPU (16GB)", "AdapterRAM": 4293918720u64}],
+        "disks": [{"Size": 1024209543168u64, "MediaType": "SSD", "BusType": "RAID", "Model": "NVMe SKHynix_HFS001TEJ9X115N"}],
+        "nics": [
+            {"Description": "Intel(R) Wi-Fi 7 BE201 320MHz", "MacAddress": "9C-65-EB-9F-18-E3", "Media": "Native 802.11", "Pnp": "PCI\\VEN_8086&DEV_A840"},
+            {"Description": "Realtek USB GbE Family Controller", "MacAddress": "D0-C0-BF-28-E9-82", "Media": "802.3", "Pnp": "USB\\VID_0BDA&PID_8153\\001000001", "Speed": 1000000000u64}
+        ],
+        "bitlocker": 4,
+        "battery": {"Full": 55000, "Design": 57000, "Present": true, "Admin": true}
+    }));
+    let ram = f.ram.as_ref().unwrap();
+    assert_eq!((ram.gb, ram.kind.as_str(), ram.replaceable.as_str(), ram.modules, ram.form_factor.as_str()), (Some(32.0), "LPDDR5", "no", None, ""));
+    assert_eq!((f.gpus[0].name.as_str(), f.gpus[0].kind.as_str(), f.gpus[0].vram_gb), ("Intel Arc 140V GPU", "integrated", None));
+    assert_eq!((f.disks[0].gb, f.disks[0].connector.as_str(), f.disks[0].form_factor.as_str()), (1000.0, "NVMe", "M.2"));
+    assert_eq!(f.nics.len(), 1, "the USB adapter is not the laptop's own card");
+    assert_eq!(f.encryption, "no"); // decrypting
+}
+
+#[test]
+fn linux_corrections() {
+    let mut i = linux::Inputs::default();
+    i.meminfo = "MemTotal:       15921532 kB\n".into();
+    i.is_root = true;
+    i.dmidecode_memory = "Memory Device\n\tSize: 8 GB\n\tForm Factor: SODIMM\n\tType: DDR4\n\tSpeed: 3200 MT/s\nMemory Device\n\tSize: 8 GB\n\tForm Factor: SODIMM\n\tType: DDR4\n\tSpeed: 3200 MT/s\n".into();
+    i.nets = vec![
+        linux::NetDevice { name: "enp0s31f6".into(), mac: "8c:8c:aa:dd:ee:ff".into(), wireless: false, physical: true, pci_slot: String::new(), usb: false },
+        linux::NetDevice { name: "enx00e04c680001".into(), mac: "00:e0:4c:68:00:01".into(), wireless: false, physical: true, pci_slot: String::new(), usb: true },
+    ];
+    let f = linux::parse(&i);
+    let ram = f.ram.as_ref().unwrap();
+    assert_eq!((ram.gb, ram.modules, ram.module_gb, ram.form_factor.as_str()), (Some(16.0), Some(2), Some(8.0), "SO-DIMM"));
+    assert_eq!(f.nics.len(), 1, "the USB adapter is left out");
+}
+
+#[test]
+fn linux_encryption_is_about_the_system_drive() {
+    let parse = |blockdevices: serde_json::Value| {
+        let mut i = linux::Inputs::default();
+        i.lsblk = serde_json::json!({ "blockdevices": blockdevices });
+        linux::parse(&i).encryption
+    };
+    // "/" inside LUKS: encrypted
+    assert_eq!(parse(serde_json::json!([{"name": "nvme0n1", "size": 512110190592u64, "type": "disk", "rm": false, "children": [
+        {"name": "nvme0n1p2", "type": "part", "children": [{"name": "luks-1", "type": "crypt", "children": [{"name": "vg-root", "type": "lvm", "mountpoint": "/"}]}]}]}])), "yes");
+    // "/" plain, a second drive encrypted: not encrypted
+    assert_eq!(parse(serde_json::json!([
+        {"name": "nvme0n1", "size": 512110190592u64, "type": "disk", "rm": false, "children": [{"name": "nvme0n1p2", "type": "part", "mountpoint": "/"}]},
+        {"name": "sda", "size": 1000204886016u64, "type": "disk", "rm": false, "children": [{"name": "data", "type": "crypt", "mountpoint": "/data"}]}])), "no");
+}
+
+#[test]
+fn windows_edition_in_any_language() {
+    let os = |caption: &str, edition: &str, build: &str| {
+        windows::parse(&serde_json::json!({ "serial": "X", "os": {"Caption": caption, "EditionID": edition, "DisplayVersion": "24H2", "Build": build} })).os.unwrap()
+    };
+    let spanish = os("Microsoft Windows 11 Profesional", "Professional", "26100");
+    assert_eq!((spanish.version.as_str(), spanish.edition.as_str()), ("11 24H2", "Pro"));
+    assert_eq!(os("Microsoft Windows 11 Home", "Core", "26100").edition, "Home");
+    assert_eq!(os("Microsoft Windows 10 Pro", "Professional", "19045").version, "10 24H2");
+    assert_eq!(os("Microsoft Windows 10 Pro", "Professional", "22631").version, "11 24H2"); // the build wins
+    assert_eq!(os("Microsoft Windows 11 Pro", "", "26100").edition, "Pro"); // no code: from the description
+}
+
+#[test]
+fn mac_pcie_ssd_listed_with_sata() {
+    let profiler = serde_json::json!({
+        "SPHardwareDataType": [{"machine_model": "MacBookPro11,1", "machine_name": "MacBook Pro"}],
+        "SPSerialATADataType": [{"_name": "Apple SSD Controller", "spsata_negotiatedlinkspeed": "5.0 GT/s",
+            "_items": [{"_name": "APPLE SSD SM0256F", "size_in_bytes": 251000193024u64}]}]
+    });
+    let f = macos::parse(&macos::Inputs {
+        profiler, cpu_brand: "Intel(R) Core(TM) i5-4258U CPU @ 2.40GHz".into(), product_version: String::new(), hardware_ports: String::new(),
+        filevault: String::new(), directory: None, ioreg_battery: String::new(), hostname: String::new(), screen_mm: None,
+        nvram_oclp: String::new(), nvram_opencore: String::new(), oclp_patches: String::new(), media: Default::default(),
+    });
+    let d = &f.disks[0];
+    assert_eq!((d.gb, d.kind.as_str(), d.connector.as_str(), d.form_factor.as_str(), d.replaceable.as_str()), (256.0, "SSD", "PCIe 2.0", "Apple (propietario)", "yes"));
+}
+
+/// What the Windows script itself printed (run in PowerShell 7 with stand-ins for the Windows-only commands that
+/// answer like a ThinkPad X1 Carbon Gen 13 with a USB Ethernet adapter), read the way the app reads it.
+#[test]
+fn windows_script_output_end_to_end() {
+    let json: serde_json::Value = serde_json::from_str(include_str!("windows_script_output.json")).unwrap();
+    let mut f = windows::parse(&json);
+    collect::tidy(&mut f);
+    assert_eq!((f.manufacturer.as_str(), f.model.as_str(), f.chassis.as_str(), f.serial.as_str()), ("Lenovo", "ThinkPad X1 Carbon Gen 13", "laptop", "PF5TSTVA"));
+    let cpu = f.cpu.as_ref().unwrap();
+    assert_eq!((cpu.name.as_str(), cpu.cores, cpu.max_ghz), ("Intel Core Ultra 7 258V", Some(8), Some(2.2)));
+    let ram = f.ram.as_ref().unwrap();
+    assert_eq!((ram.gb, ram.kind.as_str(), ram.mts, ram.replaceable.as_str()), (Some(32.0), "LPDDR5", Some(8533.0), "no"));
+    let gpus: Vec<(&str, &str, Option<f64>)> = f.gpus.iter().map(|g| (g.name.as_str(), g.kind.as_str(), g.vram_gb)).collect();
+    assert_eq!(gpus, vec![("Intel Arc 140V GPU", "integrated", None), ("NVIDIA RTX A1000 6GB Laptop GPU", "dedicated", Some(6.0))]);
+    let d = &f.disks[0];
+    assert_eq!((d.gb, d.kind.as_str(), d.connector.as_str(), d.replaceable.as_str(), d.form_factor.as_str()), (1000.0, "SSD", "NVMe", "yes", "M.2"));
+    assert_eq!(f.screen_inches, Some(14.0));
+    assert_eq!(f.battery.as_ref().unwrap().health_pct, 97.0);
+    let os = f.os.as_ref().unwrap();
+    assert_eq!((os.version.as_str(), os.edition.as_str()), ("11 25H2", "Pro"));
+    assert_eq!(f.nics.len(), 1, "only the built-in Wi-Fi: the USB adapter is left out");
+    assert_eq!((f.nics[0].wifi_gen.as_str(), f.nics[0].bt_ver.as_str()), ("7", "5.4"));
+    assert!(f.warnings.is_empty(), "{:?}", f.warnings);
 }

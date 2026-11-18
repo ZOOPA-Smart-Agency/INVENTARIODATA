@@ -18,6 +18,8 @@ pub struct NetDevice {
     pub physical: bool,
     /// "0000:00:14.3" for cards on the PCI bus, to find their name in lspci
     pub pci_slot: String,
+    /// connected by USB (an adapter or dock, which moves between computers)
+    pub usb: bool,
 }
 
 /// What the system said, as given to `parse`.
@@ -42,6 +44,23 @@ pub struct Inputs {
     pub iw: String,
     /// `hciconfig -a`: the Bluetooth radio's version
     pub hci: String,
+    /// each drive's link speed ("sda" -> "6.0 Gb/s" for SATA, "nvme0n1" -> "8.0 GT/s PCIe" for NVMe), from /sys
+    pub disk_links: HashMap<String, String>,
+    /// `ethtool` for each Ethernet port ("eth0" -> its output), for the speeds it supports
+    pub ethtool: HashMap<String, String>,
+}
+
+/// The link speed /sys reports for a drive: SATA through its ata link, NVMe through its PCI device.
+#[cfg(target_os = "linux")]
+fn disk_link(name: &str) -> Option<String> {
+    use util::read;
+    if name.starts_with("nvme") {
+        return read(&format!("/sys/block/{name}/device/device/current_link_speed"));
+    }
+    // /sys/block/sda points into .../ata3/host2/...; ata3's link is /sys/class/ata_link/link3
+    let path = std::fs::canonicalize(format!("/sys/block/{name}")).ok()?;
+    let ata = path.iter().map(|p| p.to_string_lossy().into_owned()).find(|p| p.starts_with("ata") && p[3..].chars().all(|c| c.is_ascii_digit()))?;
+    read(&format!("/sys/class/ata_link/link{}/sata_spd", &ata[3..])).filter(|s| !s.contains("unknown"))
 }
 
 #[cfg(target_os = "linux")]
@@ -64,6 +83,7 @@ pub fn collect() -> Facts {
                 physical: path.join("device").exists(),
                 pci_slot: read(&format!("{}/device/uevent", path.display())).unwrap_or_default().lines()
                     .find_map(|l| l.strip_prefix("PCI_SLOT_NAME=").map(String::from)).unwrap_or_default(),
+                usb: std::fs::canonicalize(path.join("device")).map(|p| p.to_string_lossy().contains("/usb")).unwrap_or(false),
             });
         }
     }
@@ -79,6 +99,10 @@ pub fn collect() -> Facts {
             .find_map(|p| std::fs::read(p.join("edid")).ok().filter(|b| b.len() >= 128))
     });
     let is_root = run("id", &["-u"]).map(|u| u.trim() == "0").unwrap_or(false);
+    let lsblk: Value = run("lsblk", &["-J", "-b", "-o", "NAME,SIZE,ROTA,TRAN,TYPE,RM,MODEL,MOUNTPOINT"]).and_then(|s| serde_json::from_str(&s).ok()).unwrap_or(Value::Null);
+    let disk_links = util::list(&lsblk["blockdevices"]).iter().map(|d| util::text(&d["name"]))
+        .filter_map(|name| disk_link(&name).map(|speed| (name, speed))).collect();
+    let ethtool = nets.iter().filter(|n| n.physical && !n.wireless).filter_map(|n| run("ethtool", &[&n.name]).map(|out| (n.name.clone(), out))).collect();
     parse(&Inputs {
         dmi,
         devicetree_serial: read("/sys/firmware/devicetree/base/serial-number").unwrap_or_default().trim_end_matches('\u{0}').to_string(),
@@ -86,7 +110,7 @@ pub fn collect() -> Facts {
         lscpu: run("lscpu", &["-J"]).and_then(|s| serde_json::from_str(&s).ok()).unwrap_or(Value::Null),
         meminfo: read("/proc/meminfo").unwrap_or_default(),
         dmidecode_memory: if is_root { run("dmidecode", &["-t", "memory"]).unwrap_or_default() } else { String::new() },
-        lsblk: run("lsblk", &["-J", "-b", "-o", "NAME,SIZE,ROTA,TRAN,TYPE,RM,MODEL"]).and_then(|s| serde_json::from_str(&s).ok()).unwrap_or(Value::Null),
+        lsblk,
         lspci: run("lspci", &["-mm"]).unwrap_or_default(),
         nets,
         os_release: read("/etc/os-release").or_else(|| read("/usr/lib/os-release")).unwrap_or_default(),
@@ -97,6 +121,8 @@ pub fn collect() -> Facts {
         is_root,
         iw: run("iw", &["phy"]).unwrap_or_default(),
         hci: run("hciconfig", &["-a"]).unwrap_or_default(),
+        disk_links,
+        ethtool,
     })
 }
 
@@ -194,7 +220,15 @@ pub fn parse(i: &Inputs) -> Facts {
         let form = field("Form Factor");
         let socketed = form == "SODIMM" || form == "DIMM";
         ram.replaceable = if socketed { "yes" } else if form == "Row Of Chips" || ram.kind.starts_with("LP") { "no" } else { "" }.into();
-        if socketed {
+        // the installed modules add up to the exact total (/proc/meminfo leaves out what firmware keeps)
+        let sizes: Vec<f64> = installed.iter().filter_map(|d| d.lines().find_map(|l| l.trim().strip_prefix("Size:")).and_then(util::number_and_unit))
+            .map(|(n, unit)| if unit.starts_with("MB") { n / 1024.0 } else if unit.starts_with("TB") { n * 1024.0 } else { n }).collect();
+        if !sizes.is_empty() && sizes.len() == installed.len() {
+            ram.gb = Some(sizes.iter().sum());
+        }
+        if ram.kind.starts_with("LP") {
+            ram.replaceable = "no".into(); // LPDDR is soldered whatever the table says
+        } else if socketed {
             ram.form_factor = if form == "SODIMM" { "SO-DIMM" } else { "DIMM" }.into();
             ram.modules = Some(installed.len() as u32);
             ram.module_gb = util::number_and_unit(&field("Size")).map(|(n, unit)| if unit.starts_with("MB") { n / 1024.0 } else { n });
@@ -217,8 +251,15 @@ pub fn parse(i: &Inputs) -> Facts {
         } else {
             (if flag(&dev["rota"]) { "HDD" } else { "SSD" }, match tran.as_str() { "sata" => "SATA", "sas" => "SAS", _ => "" })
         };
-        let replaceable = util::pc_disk_replaceable(kind, connector, &tran, &text(&dev["model"]));
-        f.disks.push(Disk { gb: util::disk_gb(bytes), kind: kind.into(), connector: connector.into(), replaceable: replaceable.into() });
+        // the generation, when /sys says it: SATA III, NVMe PCIe 4.0...
+        let connector = match (connector, i.disk_links.get(&name)) {
+            ("SATA", Some(speed)) => util::sata_connector(speed).to_string(),
+            ("NVMe", Some(speed)) => util::nvme_connector(speed),
+            (c, _) => c.to_string(),
+        };
+        let replaceable = util::pc_disk_replaceable(kind, &connector, &tran, &text(&dev["model"]));
+        let form_factor = util::pc_disk_form(kind, &connector, replaceable, &f.chassis).into();
+        f.disks.push(Disk { gb: util::disk_gb(bytes), kind: kind.into(), connector, replaceable: replaceable.into(), form_factor });
     }
 
     // lspci -mm: 00:02.0 "VGA compatible controller" "Intel Corporation" "Alder Lake-P GT2 [Iris Xe Graphics]" ...
@@ -248,11 +289,18 @@ pub fn parse(i: &Inputs) -> Facts {
     }
 
     for net in &i.nets {
-        if !net.physical || net.name == "lo" {
+        if !net.physical || net.name == "lo" || net.usb {
             continue;
         }
         let mut nic = Nic { kind: if net.wireless { "wifi" } else { "eth" }.into(), mac: net.mac.clone(), ..Nic::default() };
         nic.model = pci_name(&i.lspci, &net.pci_slot);
+        if !net.wireless {
+            // ethtool lists the modes the port supports ("1000baseT/Full 2500baseT/Full")
+            nic.speed_mbps = i.ethtool.get(&net.name).and_then(|out| {
+                let supported: String = out.lines().skip_while(|l| !l.contains("Supported link modes")).take_while(|l| !l.contains("Supported pause")).collect::<Vec<_>>().join(" ");
+                util::max_ethernet_mbps(&supported)
+            }).or_else(|| util::ethernet_mbps_from_name(&nic.model));
+        }
         if net.wireless {
             nic.wifi_gen = wifi_gen_from_iw(&i.iw);
             if nic.wifi_gen.is_empty() {
@@ -267,8 +315,16 @@ pub fn parse(i: &Inputs) -> Facts {
     if !distro.is_empty() {
         f.os = Some(Os { family: "linux".into(), version, edition: String::new(), distro });
     }
-    let types: Vec<String> = { let mut t = Vec::new(); collect_types(&i.lsblk["blockdevices"], &mut t); t };
-    f.encryption = if types.iter().any(|t| t == "crypt") { "yes".into() } else if types.is_empty() { String::new() } else { "no".into() };
+    // encrypted when the system itself ("/") sits on an encrypted (LUKS) volume; a second encrypted drive does not count
+    f.encryption = match root_encrypted(&i.lsblk["blockdevices"], false) {
+        Some(true) => "yes".into(),
+        Some(false) => "no".into(),
+        None => {
+            // lsblk without mount points (older versions): any encrypted volume, as before
+            let types: Vec<String> = { let mut t = Vec::new(); collect_types(&i.lsblk["blockdevices"], &mut t); t };
+            if types.iter().any(|t| t == "crypt") { "yes".into() } else if types.is_empty() { String::new() } else { "no".into() }
+        }
+    };
     f.domain_joined = match &i.realm { Some(out) if !out.trim().is_empty() => "yes".into(), Some(_) => "no".into(), None => String::new() };
     if let Some((full, design)) = i.battery {
         if design > 0.0 && full > 0.0 {
@@ -331,6 +387,20 @@ pub fn bt_from_hciconfig(hci: &str) -> String {
 }
 
 /// Every device type in the lsblk tree (to spot "crypt", which LUKS uses).
+/// Whether the volume mounted at "/" is (inside) an encrypted one; None when no "/" is listed.
+fn root_encrypted(value: &Value, under_crypt: bool) -> Option<bool> {
+    for dev in list(value) {
+        let crypt = under_crypt || text(&dev["type"]) == "crypt";
+        if text(&dev["mountpoint"]) == "/" {
+            return Some(crypt);
+        }
+        if let Some(found) = root_encrypted(&dev["children"], crypt) {
+            return Some(found);
+        }
+    }
+    None
+}
+
 fn collect_types(value: &Value, out: &mut Vec<String>) {
     for dev in list(value) {
         out.push(text(&dev["type"]));

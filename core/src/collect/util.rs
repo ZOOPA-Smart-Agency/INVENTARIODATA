@@ -93,19 +93,33 @@ pub fn cpu_name(name: &str) -> String {
     clean(&n)
 }
 
-/// Whole gigabytes as shown on a box: 15.6 GiB of usable memory -> 16.
+/// Memory as sold, from what the system says is usable (a little less: firmware and graphics keep some):
+/// 15.6 GiB -> 16, 7.7 -> 8, 2.9 -> 3, 11.8 -> 12; the smallest size sold that holds it.
 pub fn ram_gb_from_bytes(bytes: f64) -> f64 {
     let gib = bytes / 1024.0 / 1024.0 / 1024.0;
     if gib <= 0.0 {
         return 0.0;
     }
-    let up = (gib / 2.0).ceil() * 2.0; // memory is sold in even sizes
-    if up - gib > 1.5 { gib.round() } else { up }
+    const SOLD: [f64; 22] = [1.0, 2.0, 3.0, 4.0, 6.0, 8.0, 12.0, 16.0, 18.0, 20.0, 24.0, 32.0, 36.0, 40.0, 48.0, 64.0, 96.0, 128.0, 192.0, 256.0, 384.0, 512.0];
+    SOLD.iter().copied().find(|s| *s >= gib - 0.05).unwrap_or(gib.round())
 }
 
-/// Drive sizes as manufacturers count them (1 GB = 1,000,000,000 bytes), rounded.
+/// Drive size as sold, in GB (1 GB = 1,000,000,000 bytes, as makers count): the exact size moves to the nearest size
+/// drives are sold in when it is close (a "1 TB" drive of 1,024 GB -> 1000; 256.06 -> 256). Apple's SSDs keep less
+/// for themselves than others, so theirs are matched against Apple's sizes (500.3 GB -> the "512 GB" model).
 pub fn disk_gb(bytes: f64) -> f64 {
-    (bytes / 1e9).round()
+    disk_gb_sold(bytes, false)
+}
+
+pub fn disk_gb_sold(bytes: f64, apple_ssd: bool) -> f64 {
+    let gb = bytes / 1e9;
+    const SOLD: [f64; 40] = [8.0, 16.0, 32.0, 60.0, 64.0, 80.0, 120.0, 128.0, 160.0, 180.0, 240.0, 250.0, 256.0, 320.0, 400.0, 480.0, 500.0, 512.0,
+                             640.0, 750.0, 960.0, 1000.0, 1200.0, 1500.0, 1920.0, 2000.0, 3000.0, 3840.0, 4000.0, 5000.0, 6000.0, 8000.0, 10000.0,
+                             12000.0, 14000.0, 16000.0, 18000.0, 20000.0, 22000.0, 24000.0];
+    const APPLE: [f64; 8] = [64.0, 128.0, 256.0, 512.0, 1000.0, 2000.0, 4000.0, 8000.0];
+    let (sizes, margin): (&[f64], f64) = if apple_ssd { (&APPLE, 0.06) } else { (&SOLD, 0.03) };
+    let nearest = sizes.iter().copied().min_by(|a, b| (a - gb).abs().total_cmp(&(b - gb).abs())).unwrap_or(gb);
+    if (nearest - gb).abs() <= nearest * margin { nearest } else { gb.round() }
 }
 
 /// The first number in a text like "18 GB", "2,6 GHz" or "1536 MB", with the unit after it.
@@ -241,4 +255,109 @@ pub fn mac_disk_replaceable(identifier: &str, apple_silicon: bool) -> &'static s
         _ => return "",
     };
     if soldered { "no" } else { "yes" }
+}
+
+/// The SATA generation from a link speed as each system writes it ("6 Gigabit", "6.0 Gb/s", "3.0 Gbps").
+pub fn sata_connector(speed: &str) -> &'static str {
+    let number: String = speed.trim().chars().take_while(|c| c.is_ascii_digit() || *c == '.').collect();
+    match number.parse::<f64>().ok() {
+        Some(v) if v >= 5.0 => "SATA III",
+        Some(v) if v >= 2.5 => "SATA II",
+        Some(v) if v > 0.0 => "SATA I",
+        _ => "SATA",
+    }
+}
+
+/// The PCI Express generation from a link speed in GT/s: "5.0 GT/s" -> "2.0", "8.0 GT/s PCIe" -> "3.0"; "" if unknown.
+pub fn pcie_generation(link_speed: &str) -> &'static str {
+    let number: String = link_speed.trim().chars().take_while(|c| c.is_ascii_digit() || *c == '.').collect();
+    match number.parse::<f64>().ok() {
+        Some(v) if v >= 60.0 => "6.0", Some(v) if v >= 30.0 => "5.0", Some(v) if v >= 15.0 => "4.0",
+        Some(v) if v >= 7.0 => "3.0", Some(v) if v >= 4.0 => "2.0", Some(v) if v >= 2.0 => "1.0",
+        _ => "",
+    }
+}
+
+/// The PCI Express generation of an NVMe drive from its link speed in GT/s ("8.0 GT/s PCIe" -> NVMe PCIe 3.0).
+pub fn nvme_connector(link_speed: &str) -> String {
+    match pcie_generation(link_speed) {
+        "" => "NVMe".into(),
+        generation => format!("NVMe PCIe {generation}"),
+    }
+}
+
+/// The fastest Ethernet speed (Mbit/s) in a list of link modes, whatever the system's wording:
+/// "1000baseT/Full 2500baseT/Full" (Linux), "10baseT/UTP 100baseTX 1000baseT 10Gbase-T" (macOS),
+/// "100 Mbps Full Duplex;1.0 Gbps Full Duplex;2.5 Gbps Full Duplex" (Windows).
+pub fn max_ethernet_mbps(modes: &str) -> Option<u32> {
+    let text = modes.to_lowercase();
+    let words: Vec<&str> = text.split(|c: char| c.is_whitespace() || matches!(c, '/' | ',' | ';' | '(' | ')' | '<' | '>')).filter(|w| !w.is_empty()).collect();
+    let lead = |w: &str| -> Option<f64> { w.chars().take_while(|c| c.is_ascii_digit() || *c == '.').collect::<String>().parse().ok() };
+    let mut best: Option<f64> = None;
+    for (i, word) in words.iter().enumerate() {
+        let speed = if let Some(n) = word.find("gbase") { lead(&word[..n]).map(|v| v * 1000.0) }
+            else if let Some(n) = word.find("base") { lead(&word[..n]) }
+            else if *word == "gbps" || *word == "gbit" { words.get(i.wrapping_sub(1)).and_then(|w| lead(w)).map(|v| v * 1000.0) }
+            else if *word == "mbps" || *word == "mbit" { words.get(i.wrapping_sub(1)).and_then(|w| lead(w)) }
+            else { None };
+        if let Some(v) = speed.filter(|v| *v >= 10.0) {
+            best = Some(best.map_or(v, |b: f64| b.max(v)));
+        }
+    }
+    best.map(|v| v.round() as u32)
+}
+
+/// A PC's (Windows or Linux) drive form factor, where the kind and connection settle it: NVMe drives that can be
+/// swapped sit in an M.2 slot; hard drives are 2.5" in laptops and 3.5" in desktops. A SATA SSD can be 2.5", M.2 or
+/// mSATA, which the system does not say, so it is left out.
+pub fn pc_disk_form(kind: &str, connector: &str, replaceable: &str, chassis: &str) -> &'static str {
+    if replaceable == "no" || kind == "eMMC" {
+        ""
+    } else if connector.starts_with("NVMe") {
+        "M.2"
+    } else if kind == "HDD" && chassis == "laptop" {
+        "2.5\""
+    } else if kind == "HDD" && chassis == "desktop" {
+        "3.5\""
+    } else {
+        ""
+    }
+}
+
+/// A Mac's drive form factor, from its model: hard drives are 3.5" in the Mac Pro, in iMacs up to 2011 and in the
+/// 27-inch iMac, and 2.5" elsewhere; SATA SSDs are 2.5" (except the MacBook Air's own card); NVMe and PCIe SSDs that
+/// can be swapped are on Apple's own card. Soldered storage (Apple silicon, T2) has none.
+pub fn mac_disk_form(identifier: &str, kind: &str, connector: &str, replaceable: &str, screen_inches: Option<f64>) -> &'static str {
+    if replaceable != "yes" {
+        return "";
+    }
+    let family: String = identifier.chars().take_while(|c| c.is_ascii_alphabetic()).collect();
+    let major: u32 = identifier[family.len()..].split(',').next().and_then(|n| n.trim().parse().ok()).unwrap_or(0);
+    if connector.starts_with("NVMe") || connector.starts_with("PCIe") {
+        return "Apple (propietario)"; // Apple's own SSD card
+    }
+    match (kind, family.as_str()) {
+        ("HDD", "MacPro") => "3.5\"",
+        ("HDD", "iMac") if major <= 12 || screen_inches.is_some_and(|s| s >= 26.0) => "3.5\"",
+        ("HDD", _) => "2.5\"",
+        ("SSD", "MacBookAir") => "Apple (propietario)",
+        ("SSD", _) => "2.5\"",
+        _ => "",
+    }
+}
+
+/// An Ethernet port's speed from its name, when nothing else says it: "Realtek USB GbE Family Controller" and
+/// "Intel Ethernet Connection I219-V Gigabit" -> 1000, "Realtek 2.5GbE" and "Intel Ethernet Controller I225-V 2.5G"
+/// -> 2500, "10GbE" -> 10000, "Fast Ethernet" and "10/100" -> 100.
+pub fn ethernet_mbps_from_name(name: &str) -> Option<u32> {
+    let n = name.to_lowercase().replace(['-', '_'], " ");
+    // the faster names first, and 2.5 before 5: "2.5GbE" also contains "5GbE"
+    for (marks, mbps) in [(&["10gbe", "10 gbe", "10gbase", "10 gigabit", "10g "][..], 10000), (&["2.5gbe", "2.5 gbe", "2.5g", "2.5 gigabit"][..], 2500),
+                          (&["5gbe", "5 gbe", "5g "][..], 5000), (&["gbe", "gigabit", "1000base", "10/100/1000"][..], 1000),
+                          (&["fast ethernet", "10/100"][..], 100)] {
+        if marks.iter().any(|m| format!("{n} ").contains(m)) {
+            return Some(mbps);
+        }
+    }
+    None
 }

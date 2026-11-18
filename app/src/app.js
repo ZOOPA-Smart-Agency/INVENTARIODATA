@@ -315,7 +315,7 @@ function factRows(f) {
   add('f_model', [f.manufacturer, f.model].filter(Boolean).join(' '));
   if (f.cpu) add('f_cpu', [f.cpu.name, f.cpu.cores ? '· ' + t('cores', { n: f.cpu.cores }) : ''].filter(Boolean).join(' '));
   if (f.ram && f.ram.gb) add('f_ram', [number(f.ram.gb) + ' GB', f.ram.type, f.ram.mts ? number(f.ram.mts) + ' MT/s' : ''].filter(Boolean).join(' '));
-  add('f_disks', (f.disks || []).map((d) => [d.gb >= 1000 ? number(Math.round(d.gb / 100) / 10) + ' TB' : number(d.gb) + ' GB', d.type, d.connector].filter(Boolean).join(' ')).join(', '));
+  add('f_disks', (f.disks || []).map((d) => [d.gb >= 1000 ? number(Math.round(d.gb / 100) / 10) + ' TB' : number(d.gb) + ' GB', d.type, d.connector, d.formFactor].filter(Boolean).join(' ')).join(', '));
   add('f_gpus', (f.gpus || []).map((g) => g.name + (g.vramGb ? ' (' + number(g.vramGb) + ' GB)' : '')).join(', '));
   if (f.screenInches) add('f_screen', number(f.screenInches) + '"');
   if (f.battery) add('f_battery', number(f.battery.healthPct) + ' %');
@@ -329,6 +329,7 @@ function factRows(f) {
   add('f_nics', (f.nics || []).map((n) => [
     n.type === 'wifi' ? 'Wi-Fi' + (n.wifiGen ? ' ' + n.wifiGen : '') : 'Ethernet',
     n.model,
+    n.speedMbps ? (n.speedMbps >= 1000 ? number(n.speedMbps / 1000) + ' Gbps' : number(n.speedMbps) + ' Mbps') : '',
     n.btVer ? 'Bluetooth ' + n.btVer : '',
   ].filter(Boolean).join(' · ')).join(', '));
   return rows;

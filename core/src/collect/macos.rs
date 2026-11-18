@@ -23,6 +23,8 @@ pub struct Inputs {
     pub nvram_opencore: String,
     /// OpenCore Legacy Patcher's record of its system patches, as JSON (empty when the Mac was never patched)
     pub oclp_patches: String,
+    /// `ifconfig -m` for each Ethernet port ("en0" -> its output), for the speeds it supports
+    pub media: std::collections::HashMap<String, String>,
 }
 
 /// The vendor id OpenCore puts its NVRAM variables under.
@@ -40,14 +42,19 @@ pub fn collect() -> Facts {
             .unwrap_or(Value::Null)
     });
     let profiler = run("system_profiler", &["-json", "SPHardwareDataType", "SPMemoryDataType", "SPNVMeDataType",
-                                                "SPSerialATADataType", "SPDisplaysDataType", "SPPowerDataType"])
+                                                "SPSerialATADataType", "SPDisplaysDataType", "SPPowerDataType", "SPEthernetDataType"])
         .and_then(|s| serde_json::from_str(&s).ok())
         .unwrap_or(Value::Null);
+    let hardware_ports = run("networksetup", &["-listallhardwareports"]).unwrap_or_default();
+    let media = hardware_ports.lines().filter_map(|l| l.strip_prefix("Device:").map(|d| d.trim().to_string()))
+        .filter(|d| d.starts_with("en"))
+        .filter_map(|d| run("ifconfig", &["-m", &d]).map(|out| (d, out)))
+        .collect();
     let mut inputs = Inputs {
         profiler,
         cpu_brand: run("sysctl", &["-n", "machdep.cpu.brand_string"]).unwrap_or_default(),
         product_version: run("sw_vers", &["-productVersion"]).unwrap_or_default(),
-        hardware_ports: run("networksetup", &["-listallhardwareports"]).unwrap_or_default(),
+        hardware_ports,
         filevault: run("fdesetup", &["status"]).unwrap_or_default(),
         directory: run("dsconfigad", &["-show"]),
         ioreg_battery: run("ioreg", &["-rn", "AppleSmartBattery"]).unwrap_or_default(),
@@ -60,6 +67,7 @@ pub fn collect() -> Facts {
         } else {
             String::new()
         },
+        media,
     };
     inputs.profiler["SPAirPortDataType"] = airport.join().unwrap_or(Value::Null);
     parse(&inputs)
@@ -94,9 +102,14 @@ pub fn wifi_chip(card_type: &str) -> String {
     let ids: Vec<String> = card_type.split(['(', ')', ',']).map(|p| p.trim().to_lowercase()).filter(|p| p.starts_with("0x")).collect();
     let (Some(vendor), Some(device)) = (ids.first(), ids.get(1)) else { return String::new() };
     let chip = device.trim_start_matches("0x").to_uppercase();
+    // newer Macs give the chip number (0x4378 -> BCM4378, 0x7932 -> MT7932); older ones a short Apple card number
+    // (0x111 on a 2013 iMac), which is not a chip: then only the maker is known
+    let is_chip = chip.len() >= 4;
     match vendor.as_str() {
-        "0x14e4" => format!("Broadcom BCM{chip}"),
-        "0x14c3" => format!("MediaTek MT{chip}"),
+        "0x14e4" if is_chip => format!("Broadcom BCM{chip}"),
+        "0x14e4" => "Broadcom".into(),
+        "0x14c3" if is_chip => format!("MediaTek MT{chip}"),
+        "0x14c3" => "MediaTek".into(),
         "0x106b" => "Apple".into(),
         "0x8086" => "Intel".into(),
         "0x168c" | "0x17cb" => "Qualcomm".into(),
@@ -204,17 +217,33 @@ pub fn parse(input: &Inputs) -> Facts {
     }
     f.ram = Some(ram);
 
-    // drives (internal only)
-    for (section_name, connector) in [("SPNVMeDataType", "NVMe"), ("SPSerialATADataType", "SATA")] {
-        for drive in items(&input.profiler, section_name) {
-            if text(&drive["detachable_drive"]) == "yes" || text(&drive["removable_media"]) == "yes" {
-                continue;
-            }
-            let Some(bytes) = num(&drive["size_in_bytes"]) else { continue };
-            let medium = text(&drive["spsata_medium_type"]);
-            let kind = if connector == "NVMe" || medium.contains("Solid") { "SSD" } else if medium.contains("Rotational") { "HDD" } else { "" };
-            f.disks.push(Disk { gb: util::disk_gb(bytes), kind: kind.into(), connector: connector.into(), replaceable: util::mac_disk_replaceable(&identifier, apple_silicon).into() });
+    // drives (internal only); a SATA controller's negotiated link speed gives the SATA generation
+    let mut drives: Vec<(Value, String)> = items(&input.profiler, "SPNVMeDataType").into_iter().map(|d| (d, "NVMe".to_string())).collect();
+    for controller in section(&input.profiler, "SPSerialATADataType") {
+        let link = |v: &Value| [&v["spsata_negotiatedlinkspeed"], &v["spsata_portspeed"]].iter().map(|x| text(x)).find(|x| !x.is_empty()).unwrap_or_default();
+        let nested = util::list(&controller["_items"]);
+        let drives_here: Vec<Value> = if nested.is_empty() { vec![controller.clone()] } else { nested.into_iter().cloned().collect() };
+        for drive in drives_here {
+            let speed = if link(&drive).is_empty() { link(controller) } else { link(&drive) };
+            // 2013-2015 Macs list their PCIe SSD here too, with a speed in GT/s (PCIe), not Gigabit (SATA)
+            let connector = if speed.contains("GT/s") {
+                let generation = util::pcie_generation(&speed);
+                if generation.is_empty() { "PCIe".to_string() } else { format!("PCIe {generation}") }
+            } else {
+                util::sata_connector(&speed).to_string()
+            };
+            drives.push((drive, connector));
         }
+    }
+    for (drive, connector) in drives {
+        if text(&drive["detachable_drive"]) == "yes" || text(&drive["removable_media"]) == "yes" {
+            continue;
+        }
+        let Some(bytes) = num(&drive["size_in_bytes"]) else { continue };
+        let medium = text(&drive["spsata_medium_type"]);
+        let kind = if connector == "NVMe" || connector.starts_with("PCIe") || medium.contains("Solid") { "SSD" } else if medium.contains("Rotational") { "HDD" } else { "" };
+        let apple_ssd = kind == "SSD" && (apple_silicon || text(&drive["_name"]).to_uppercase().starts_with("APPLE SSD") || text(&drive["device_model"]).to_uppercase().starts_with("APPLE SSD"));
+        f.disks.push(Disk { gb: util::disk_gb_sold(bytes, apple_ssd), kind: kind.into(), connector, replaceable: util::mac_disk_replaceable(&identifier, apple_silicon).into(), form_factor: String::new() });
     }
 
     // graphics
@@ -223,8 +252,11 @@ pub fn parse(input: &Inputs) -> Facts {
         if name.is_empty() {
             continue;
         }
-        let vendor = text(&gpu["spdisplays_vendor"]).to_lowercase() + &name.to_lowercase();
-        let dedicated = vendor.contains("amd") || vendor.contains("ati") || vendor.contains("nvidia") || vendor.contains("radeon");
+        // AMD (ATI) and NVIDIA chips in Macs are separate cards; Intel and Apple graphics are built into the processor
+        let vendor = text(&gpu["spdisplays_vendor"]).to_lowercase();
+        let lower = name.to_lowercase();
+        let dedicated = ["sppci_vendor_amd", "sppci_vendor_ati", "sppci_vendor_nvidia", "amd", "ati", "nvidia"].contains(&vendor.as_str())
+            || ["radeon", "geforce", "quadro", "firepro", "nvidia"].iter().any(|w| lower.contains(w));
         let vram = [&gpu["spdisplays_vram"], &gpu["sppci_vram"], &gpu["_spdisplays_vram"]].iter()
             .find_map(|v| number_and_unit(&text(v))).map(|(n, unit)| if unit.starts_with("MB") { n / 1024.0 } else { n });
         let name = if name.starts_with("Apple") && !name.ends_with("GPU") { format!("{name} GPU") } else { name };
@@ -275,12 +307,18 @@ pub fn parse(input: &Inputs) -> Facts {
         let device = field("Device:");
         let kind = if port.contains("Wi-Fi") || port.contains("AirPort") {
             "wifi"
-        } else if port == "Ethernet" || port.starts_with("Ethernet ") || port.contains("Ethernet Adapter") && !port.contains("Thunderbolt") {
-            "eth"
+        } else if port == "Ethernet" || (port.starts_with("Ethernet ") && !port.contains("Adapter")) {
+            "eth" // the Mac's own ports ("Ethernet", "Ethernet 1"); USB and Thunderbolt adapters move between computers
         } else {
-            continue; // Thunderbolt bridges, Bluetooth, iPhone USB, VPNs
+            continue; // adapters, Thunderbolt bridges, Bluetooth, iPhone USB, VPNs
         };
         let mut nic = Nic { kind: kind.into(), mac, ..Nic::default() };
+        if kind == "eth" {
+            if let Some(port) = section(&input.profiler, "SPEthernetDataType").into_iter().find(|e| text(&e["spethernet_BSD_Device_Name"]) == device) {
+                nic.model = ethernet_chip(port);
+            }
+            nic.speed_mbps = input.media.get(&device).and_then(|out| util::max_ethernet_mbps(out)).or_else(|| util::ethernet_mbps_from_name(&nic.model));
+        }
         if kind == "wifi" {
             if let Some(card) = airport.iter().find(|c| text(&c["_name"]) == device).or_else(|| airport.first()) {
                 let six_ghz = util::list(&card["spairport_supported_channels"]).iter().any(|c| text(c).contains("6GHz"));
@@ -290,5 +328,32 @@ pub fn parse(input: &Inputs) -> Facts {
         }
         f.nics.push(nic);
     }
+
+    // the drives' form factor needs the screen size (a 27-inch iMac's hard drive is 3.5")
+    for disk in &mut f.disks {
+        disk.form_factor = util::mac_disk_form(&identifier, &disk.kind, &disk.connector, &disk.replaceable, f.screen_inches).into();
+    }
     f
+}
+
+/// A built-in Ethernet port's chip: its own name when macOS gives one, else the maker and PCI device id.
+pub fn ethernet_chip(port: &Value) -> String {
+    let name = text(&port["_name"]);
+    if !name.is_empty() && !name.eq_ignore_ascii_case("ethernet") && name.chars().any(|c| c.is_ascii_digit()) {
+        return name;
+    }
+    let device = text(&port["spethernet_device-id"]).to_lowercase();
+    let vendor = match text(&port["spethernet_vendor-id"]).to_lowercase().as_str() {
+        "0x14e4" => "Broadcom", "0x8086" => "Intel", "0x10ec" => "Realtek", "0x11ab" | "0x1b4b" => "Marvell",
+        "0x1d6a" => "Aquantia", "0x106b" => "Apple", _ => return name,
+    };
+    // the PCI device id is not the chip's name; the chips Macs used are known
+    let chip = match (vendor, device.as_str()) {
+        ("Broadcom", "0x16b4") => "BCM57765", ("Broadcom", "0x1682") => "BCM57762", ("Broadcom", "0x1686") => "BCM57766",
+        ("Broadcom", "0x16b0") => "BCM57761", ("Broadcom", "0x1684") => "BCM5764M", ("Broadcom", "0x16a3") => "BCM57786",
+        ("Aquantia", "0x07b1") => "AQC107", ("Aquantia", "0x87b1") => "AQC107", ("Aquantia", "0x04c0") => "AQC113",
+        ("Intel", "0x1533") => "I210", ("Intel", "0x15f3") => "I225-V",
+        _ => "",
+    };
+    if chip.is_empty() { format!("{vendor} Ethernet") } else { format!("{vendor} {chip}") }
 }

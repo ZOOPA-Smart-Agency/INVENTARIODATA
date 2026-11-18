@@ -134,7 +134,10 @@ fn print_facts(f: &Facts) {
     line("Model", format!("{} {}", f.manufacturer, f.model));
     if let Some(cpu) = &f.cpu { line("Processor", cpu.name.clone()); }
     if let Some(ram) = &f.ram { line("Memory", ram.gb.map(|g| format!("{g} GB {}", ram.kind)).unwrap_or_default()); }
-    line("Drives", f.disks.iter().map(|d| format!("{} GB {} {}", d.gb, d.kind, d.connector).trim().to_string()).collect::<Vec<_>>().join(", "));
+    line("Drives", f.disks.iter().map(|d| {
+        let size = if d.gb >= 1000.0 { format!("{} TB", (d.gb / 100.0).round() / 10.0) } else { format!("{} GB", d.gb) };
+        [size, d.kind.clone(), d.connector.clone(), d.form_factor.clone()].into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join(" ")
+    }).collect::<Vec<_>>().join(", "));
     line("Graphics", f.gpus.iter().map(|g| g.name.clone()).collect::<Vec<_>>().join(", "));
     if let Some(os) = &f.os {
         let family = match os.family.as_str() { "mac" => "macOS", "win" => "Windows", _ => "Linux" };
@@ -148,7 +151,8 @@ fn print_facts(f: &Facts) {
     line("Network", f.nics.iter().map(|n| {
         let kind = if n.kind == "wifi" { format!("Wi-Fi {}", n.wifi_gen).trim().to_string() } else { "Ethernet".into() };
         let bt = if n.bt_ver.is_empty() { String::new() } else { format!("Bluetooth {}", n.bt_ver) };
-        [kind, n.model.clone(), bt].into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join(" · ")
+        let speed = match n.speed_mbps { Some(s) if s >= 1000 => format!("{} Gbps", s as f64 / 1000.0), Some(s) => format!("{s} Mbps"), None => String::new() };
+        [kind, n.model.clone(), speed, bt].into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join(" · ")
     }).collect::<Vec<_>>().join(", "));
     for w in &f.warnings {
         eprintln!("note: {}", warning_text(w));

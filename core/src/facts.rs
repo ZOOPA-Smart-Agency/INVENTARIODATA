@@ -61,9 +61,12 @@ pub struct Disk {
     /// "SSD", "HDD" or "eMMC"
     #[serde(rename = "type")]
     pub kind: String,
-    /// "NVMe", "SATA"...
+    /// "SATA III", "NVMe PCIe 3.0" when the generation is known; "SATA", "NVMe"... otherwise
     pub connector: String,
     pub replaceable: String,
+    /// "2.5\"", "3.5\"", "M.2", "Apple (propietario)" when it can be told; "" otherwise
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub form_factor: String,
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
@@ -105,6 +108,9 @@ pub struct Nic {
     /// Wi-Fi only: the Bluetooth version of the same chip, "5.3"
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub bt_ver: String,
+    /// Ethernet only: the fastest speed the port supports, in Mbit/s (1000 for Gigabit Ethernet)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub speed_mbps: Option<u32>,
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
