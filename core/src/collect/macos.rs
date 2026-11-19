@@ -130,6 +130,13 @@ pub fn version_name(product_version: &str) -> String {
     if major == 0 { String::new() } else if name.is_empty() { number } else { format!("{number} {name}") }
 }
 
+/// The exact macOS version ("26.2.1"), when sw_vers gave one: numbers and dots only.
+pub fn version_number(product_version: &str) -> String {
+    let v = product_version.trim();
+    let ok = !v.is_empty() && v.len() <= 20 && v.split('.').all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_digit()));
+    if ok { v.to_string() } else { String::new() }
+}
+
 fn section<'a>(profiler: &'a Value, name: &str) -> Vec<&'a Value> {
     util::list(&profiler[name])
 }
@@ -296,7 +303,7 @@ pub fn parse(input: &Inputs) -> Facts {
         f.screen_inches = util::inches_from_cm(w / 10.0, h / 10.0);
     }
 
-    f.os = Some(Os { family: "mac".into(), version: version_name(&input.product_version), ..Os::default() });
+    f.os = Some(Os { family: "mac".into(), version: version_name(&input.product_version), number: version_number(&input.product_version), ..Os::default() });
     f.encryption = if input.filevault.contains("FileVault is On") { "yes" } else if input.filevault.contains("FileVault is Off") { "no" } else { "" }.into();
     f.domain_joined = match &input.directory {
         Some(out) if out.contains("Active Directory Domain") => "yes".into(),

@@ -104,6 +104,22 @@ pub struct Os {
     pub version: String,
     pub edition: String,
     pub distro: String,
+    /// the exact version number, with its updates ("26.2.1"); macOS only for now
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub number: String,
+}
+
+impl Os {
+    /// The version with its exact number in place of the bare one: "26 Tahoe" and "26.2.1" give "26.2.1 Tahoe".
+    pub fn full_version(&self) -> String {
+        let (head, rest) = self.version.split_once(' ').unwrap_or((&self.version, ""));
+        let same_release = !head.is_empty() && (self.number == head || self.number.starts_with(&format!("{head}.")));
+        match (self.number.is_empty(), same_release) {
+            (true, _) => self.version.clone(),
+            (false, true) => format!("{} {rest}", self.number).trim().to_string(),
+            (false, false) => format!("{} ({})", self.version, self.number).trim().to_string(),
+        }
+    }
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]

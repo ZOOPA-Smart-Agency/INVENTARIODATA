@@ -310,6 +310,15 @@ function number(n) {
   return typeof n === 'number' ? n.toLocaleString(lang, { maximumFractionDigits: 2 }) : '';
 }
 
+/* the version with its exact number in place of the bare one: "26 Tahoe" and "26.2.1" give "26.2.1 Tahoe" (as Os::full_version) */
+function fullVersion(os) {
+  const version = os.version || '', number = os.number || '';
+  const [head, ...rest] = version.split(' ');
+  if (!number) return version;
+  if (head && (number === head || number.startsWith(head + '.'))) return [number, ...rest].join(' ').trim();
+  return `${version} (${number})`.trim();
+}
+
 function factRows(f) {
   const rows = [];
   const add = (key, value) => { if (value && String(value).trim()) rows.push([t(key), String(value).trim()]); };
@@ -326,7 +335,7 @@ function factRows(f) {
   if (f.os) {
     const family = { mac: 'macOS', win: 'Windows', linux: 'Linux' }[f.os.family] || f.os.family;
     const oclp = f.oclp ? (f.oclp === 'yes' ? 'OpenCore' : 'OCLP ' + f.oclp) : '';
-    add('f_os', [[f.os.distro || family, f.os.version, f.os.edition].filter(Boolean).join(' '), oclp].filter(Boolean).join(' · '));
+    add('f_os', [[f.os.distro || family, fullVersion(f.os), f.os.edition].filter(Boolean).join(' '), oclp].filter(Boolean).join(' · '));
   }
   add('f_enc', yesNo(f.encryption));
   add('f_domain', yesNo(f.domainJoined));

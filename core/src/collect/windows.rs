@@ -237,7 +237,7 @@ pub fn parse(j: &Value) -> Facts {
     let edition = edition_name(&text(&j["os"]["EditionID"])).map(String::from).unwrap_or_else(|| words.collect::<Vec<_>>().join(" "));
     let release = [text(&j["os"]["DisplayVersion"]), text(&j["os"]["ReleaseId"])].into_iter().find(|r| !r.is_empty()).unwrap_or_default();
     if !major.is_empty() {
-        f.os = Some(Os { family: "win".into(), version: format!("{major} {release}").trim().to_string(), edition, distro: String::new() });
+        f.os = Some(Os { family: "win".into(), version: format!("{major} {release}").trim().to_string(), edition, ..Os::default() });
     }
 
     // BitLocker on the system drive: 1 on, 3 encrypting, 5 suspended (still encrypted), 6 locked / 2 off, 4 decrypting

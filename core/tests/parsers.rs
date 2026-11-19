@@ -178,6 +178,17 @@ fn macos_version_names() {
     assert_eq!(macos::version_name("26.0"), "26 Tahoe");
     assert_eq!(macos::version_name("27.2"), "27");
     assert_eq!(macos::version_name(""), "");
+    assert_eq!(macos::version_number("27.2.1\n"), "27.2.1");
+    assert_eq!(macos::version_number("26.0"), "26.0");
+    assert_eq!(macos::version_number(""), "");
+    assert_eq!(macos::version_number("26.2 beta"), "");
+    use inventario_core::facts::Os;
+    let os = |version: &str, number: &str| Os { family: "mac".into(), version: version.into(), number: number.into(), ..Os::default() }.full_version();
+    assert_eq!(os("26 Tahoe", "26.2.1"), "26.2.1 Tahoe");
+    assert_eq!(os("10.15 Catalina", "10.15.7"), "10.15.7 Catalina");
+    assert_eq!(os("27", "27.2.1"), "27.2.1");
+    assert_eq!(os("26 Tahoe", ""), "26 Tahoe");
+    assert_eq!(os("1 X", "10.2"), "1 X (10.2)", "10.2 is not release 1");
 }
 
 fn ubuntu_inputs(is_root: bool) -> linux::Inputs {
@@ -710,7 +721,7 @@ fn mac_catalina_imac() {
     let d = &f.disks[0];
     assert_eq!((f.disks.len(), d.gb, d.kind.as_str(), d.form_factor.as_str(), d.replaceable.as_str(), d.health.as_str()), (1, 1000.0, "HDD", "3.5\"", "yes", "ok"));
     assert_eq!(f.gpus.iter().map(|g| (g.name.as_str(), g.kind.as_str(), g.vram_gb)).collect::<Vec<_>>(), [("NVIDIA GeForce GTX 775M", "dedicated", Some(2.0))]);
-    assert_eq!(f.os.as_ref().map(|o| o.version.as_str()), Some("10.15 Catalina"));
+    assert_eq!(f.os.as_ref().map(|o| (o.version.as_str(), o.number.as_str())), Some(("10.15 Catalina", "10.15.7")));
     assert_eq!((f.encryption.as_str(), f.domain_joined.as_str(), f.battery.is_none()), ("no", "no", true));
     assert_eq!(f.nics.len(), 2, "the built-in Ethernet and Wi-Fi only");
     assert_eq!(f.nics.iter().find(|n| n.kind == "wifi").map(|n| n.wifi_gen.as_str()), Some("5"));

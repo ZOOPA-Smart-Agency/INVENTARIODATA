@@ -334,7 +334,7 @@ pub fn parse(i: &Inputs) -> Facts {
 
     let (distro, version) = distro_and_version(&i.os_release);
     if !distro.is_empty() {
-        f.os = Some(Os { family: "linux".into(), version, edition: String::new(), distro });
+        f.os = Some(Os { family: "linux".into(), version, distro, ..Os::default() });
     }
     // encrypted when the system itself ("/") sits on an encrypted (LUKS) volume; a second encrypted drive does not count
     f.encryption = match root_encrypted(&i.lsblk["blockdevices"], false) {

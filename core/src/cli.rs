@@ -145,7 +145,7 @@ fn print_facts(f: &Facts) {
         let family = match os.family.as_str() { "mac" => "macOS", "win" => "Windows", _ => "Linux" };
         let name = if os.distro.is_empty() { family } else { &os.distro };
         let patched = match f.oclp.as_deref() { Some("") | None => String::new(), Some("yes") => " · OpenCore".into(), Some(v) => format!(" · OCLP {v}") };
-        line("System", format!("{name} {} {}{patched}", os.version, os.edition));
+        line("System", format!("{name} {} {}{patched}", os.full_version(), os.edition));
     }
     if let Some(inches) = f.screen_inches { line("Screen", format!("{inches}\"")); }
     let cycles = f.battery_cycles.map(|c| format!(" · {c} cycles")).unwrap_or_default();
