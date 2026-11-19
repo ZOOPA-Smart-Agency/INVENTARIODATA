@@ -28,6 +28,7 @@ const I18N = {
     add: 'Añadir al inventario', update: 'Actualizar en el inventario', sign_out: 'Cambiar de cuenta',
     done_added: 'Añadido como {tag}', done_updated: '{tag} actualizado', done_text: 'Ya puedes cerrar esta ventana.',
     open: 'Ver en el inventario', close: 'Cerrar', version: 'Versión {v}',
+    update_available: 'Hay una versión nueva de la app: {v}.', update_link: 'Hay una versión nueva de la app: {v}. Descárgala de la página de la versión.', update_now: 'Actualizar ahora', update_later: 'Más tarde', update_page: 'Abrir la página de descarga', update_downloading: 'Descargando… {p}', update_installing: 'Instalando…', update_failed: 'No se pudo actualizar: {detail}',
     f_serial: 'Número de serie', f_name: 'Nombre del equipo', f_model: 'Modelo', f_cpu: 'Procesador', f_ram: 'Memoria',
     health_ok: '(estado correcto)', health_warning: '(con avisos)', health_failing: '(FALLANDO)', wear: '· desgaste {n} %', cycles: '{n} ciclos',
     f_disks: 'Almacenamiento', f_gpus: 'Gráficos', f_screen: 'Pantalla', f_battery: 'Salud de la batería', f_os: 'Sistema',
@@ -75,6 +76,7 @@ const I18N = {
     add: "Afegeix a l'inventari", update: "Actualitza a l'inventari", sign_out: 'Canvia de compte',
     done_added: 'Afegit com a {tag}', done_updated: '{tag} actualitzat', done_text: 'Ja pots tancar aquesta finestra.',
     open: "Mostra a l'inventari", close: 'Tanca', version: 'Versió {v}',
+    update_available: 'Hi ha una versió nova de l’app: {v}.', update_link: 'Hi ha una versió nova de l’app: {v}. Baixa-la de la pàgina de la versió.', update_now: 'Actualitza ara', update_later: 'Més tard', update_page: 'Obre la pàgina de baixada', update_downloading: 'Baixant… {p}', update_installing: 'Instal·lant…', update_failed: 'No s’ha pogut actualitzar: {detail}',
     f_serial: 'Número de sèrie', f_name: "Nom de l'equip", f_model: 'Model', f_cpu: 'Processador', f_ram: 'Memòria',
     health_ok: '(estat correcte)', health_warning: '(amb avisos)', health_failing: '(FALLANT)', wear: '· desgast {n} %', cycles: '{n} cicles',
     f_disks: 'Emmagatzematge', f_gpus: 'Gràfics', f_screen: 'Pantalla', f_battery: 'Salut de la bateria', f_os: 'Sistema',
@@ -122,6 +124,7 @@ const I18N = {
     add: 'Add to the inventory', update: 'Update in the inventory', sign_out: 'Change account',
     done_added: 'Added as {tag}', done_updated: '{tag} updated', done_text: 'You can close this window now.',
     open: 'View in the inventory', close: 'Close', version: 'Version {v}',
+    update_available: 'A new version of the app is available: {v}.', update_link: 'A new version of the app is available: {v}. Download it from its release page.', update_now: 'Update now', update_later: 'Later', update_page: 'Open the download page', update_downloading: 'Downloading… {p}', update_installing: 'Installing…', update_failed: 'Could not update: {detail}',
     f_serial: 'Serial number', f_name: 'Computer name', f_model: 'Model', f_cpu: 'Processor', f_ram: 'Memory',
     health_ok: '(healthy)', health_warning: '(warnings)', health_failing: '(FAILING)', wear: '· {n}% worn', cycles: '{n} cycles',
     f_disks: 'Storage', f_gpus: 'Graphics', f_screen: 'Screen', f_battery: 'Battery health', f_os: 'System',
@@ -164,7 +167,7 @@ function t(key, vars) {
   return text;
 }
 
-const state = { start: null, facts: null, factsPromise: null, server: '', offer: null, user: null, options: null, result: null, step: 'connect' };
+const state = { start: null, facts: null, factsPromise: null, server: '', offer: null, user: null, options: null, result: null, step: 'connect', update: null, updating: '' };
 
 function show(step) {
   state.step = step;
@@ -206,6 +209,7 @@ function applyLanguage() {
   if (state.step === 'trust') renderTrust();
   if (state.step === 'review') renderReview();
   if (state.step === 'done') renderDone();
+  renderUpdate();
 }
 
 // ---------- 1. connect and sign in
@@ -532,6 +536,47 @@ function renderDone() {
   $('doneText').textContent = t('done_text');
 }
 
+// ---------- updates: checked on opening, installed only when asked
+
+function renderUpdate() {
+  const u = state.update;
+  $('updateBox').hidden = !u;
+  if (!u) return;
+  $('updateText').textContent = state.updating ? state.updating : t(u.canInstall ? 'update_available' : 'update_link', { v: u.version });
+  $('updateBtn').textContent = t(u.canInstall ? 'update_now' : 'update_page');
+  $('updateLater').hidden = !!state.updating;
+}
+
+async function checkUpdate() {
+  try { state.update = await call('check_update'); } catch (e) { state.update = null; }
+  renderUpdate();
+}
+
+async function installUpdate() {
+  const u = state.update;
+  if (!u) return;
+  if (!u.canInstall) { call('open_release_page').catch(() => {}); return; }
+  setError('updateError', '');
+  busy($('updateBtn'), true);
+  const progress = new tauri.core.Channel();
+  progress.onmessage = (m) => {
+    const p = m.total ? Math.min(100, Math.round(m.done / m.total * 100)) + ' %' : (m.done / 1048576).toFixed(1) + ' MB';
+    state.updating = m.total && m.done >= m.total ? t('update_installing') : t('update_downloading', { p });
+    renderUpdate();
+  };
+  try {
+    state.updating = t('update_downloading', { p: '' });
+    renderUpdate();
+    await call('install_update', { progress }); // the app restarts into the new version
+  } catch (e) {
+    state.updating = '';
+    state.update = { ...u, canInstall: false }; // the download page is what is left
+    busy($('updateBtn'), false);
+    renderUpdate();
+    setError('updateError', t('update_failed', { detail: String(e) }));
+  }
+}
+
 // ---------- start
 
 async function init() {
@@ -548,6 +593,7 @@ async function init() {
     $('version').textContent = t('version', { v: state.start.version });
   } catch (e) { /* first run */ }
   show('connect');
+  checkUpdate();
 }
 
 $('connectForm').addEventListener('submit', (e) => { e.preventDefault(); signIn(); });
@@ -557,6 +603,8 @@ $('sendBtn').addEventListener('click', send);
 $('backBtn').addEventListener('click', signOut);
 $('openBtn').addEventListener('click', () => { if (state.result) call('open_inventory', { url: state.result.url }).catch(() => {}); });
 $('closeBtn').addEventListener('click', () => call('quit'));
+$('updateBtn').addEventListener('click', installUpdate);
+$('updateLater').addEventListener('click', () => { state.update = null; renderUpdate(); });
 $('serialInput').addEventListener('change', () => { if (state.user) loadOptions(); });
 // the suggested tag follows the type, until someone types their own
 $('type').addEventListener('change', () => {

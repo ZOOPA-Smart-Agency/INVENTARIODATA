@@ -40,6 +40,11 @@ p { margin: 0 0 10px; }
 .head { display: flex; align-items: center; padding: 0 4px; }
 .head > * + * { margin-left: 12px; }
 .head p { margin: 0; font-size: 13px; }
+.head .grow { flex: 1; min-width: 0; }
+.ver { flex: none; align-self: flex-start; font-size: 11.5px; font-weight: 600; color: var(--muted); background: var(--surface-2); border-radius: 999px; padding: 3px 9px; white-space: nowrap; }
+.update { background: var(--info-bg); border-radius: 16px; padding: 12px 14px; display: grid; grid-gap: 10px; }
+.update p { margin: 0; font-size: 13.5px; }
+.update .row { margin: 0; }
 .mark { width: 38px; height: 38px; border-radius: 10px; flex: none; display: flex; align-items: center; justify-content: center; color: #fff;
   background: linear-gradient(145deg, var(--accent-2), var(--accent)); box-shadow: 0 4px 12px rgba(0, 90, 255, 0.25); }
 

@@ -1,6 +1,7 @@
 //! "Registro de equipos": a window that reads this computer's details and adds it to the inventory.
 //! Started with arguments (for example `--server ...` or `--help`) it works as the command-line tool instead.
-//! It does nothing in the background and never updates itself: it runs when someone opens it and stops when closed.
+//! It does nothing in the background: it runs when someone opens it and stops when closed. On opening it checks
+//! for a newer published version and offers it (see update.rs); it never installs one unasked.
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
@@ -13,6 +14,8 @@ use serde_json::{json, Value};
 use std::sync::Mutex;
 use tauri::{AppHandle, State};
 use tauri_plugin_opener::OpenerExt;
+
+mod update;
 
 /// The server this window is talking to, once its certificate is trusted, and later signed in.
 #[derive(Default)]
@@ -139,6 +142,12 @@ fn open_inventory(url: String, app: AppHandle, session: State<Session>) -> Resul
     app.opener().open_url(url, None::<&str>).map_err(|e| Problem::Network { detail: e.to_string() })
 }
 
+/// Opens the page of the latest release (for copies that cannot install an update themselves).
+#[tauri::command]
+fn open_release_page(app: AppHandle) -> Result<(), String> {
+    app.opener().open_url(update::RELEASE_PAGE, None::<&str>).map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 fn sign_out(session: State<Session>) {
     *session.0.lock().unwrap() = None;
@@ -165,10 +174,14 @@ fn main() {
         std::process::exit(inventario_core::cli::run(args));
     }
 
+    update::clean_up();
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(Session::default())
-        .invoke_handler(tauri::generate_handler![start, collect_facts, connect, trust, sign_in, options, rename_computer, open_name_settings, send, open_inventory, sign_out, quit])
+        .manage(update::Pending::default())
+        .invoke_handler(tauri::generate_handler![start, collect_facts, connect, trust, sign_in, options, rename_computer, open_name_settings, send, open_inventory,
+            sign_out, quit, open_release_page, update::check_update, update::install_update])
         .run(tauri::generate_context!())
         .expect("could not open the window");
 }

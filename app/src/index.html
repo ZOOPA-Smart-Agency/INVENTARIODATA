@@ -12,11 +12,22 @@
       <div class="mark" aria-hidden="true">
         <svg viewBox="0 0 24 24" width="22" height="22"><path d="M5 6.5A1.5 1.5 0 0 1 6.5 5h11A1.5 1.5 0 0 1 19 6.5V15H5z" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M3 17.5h18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M9.2 10.2l2 2 3.6-3.8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </div>
-      <div>
+      <div class="grow">
         <h1 data-t="title"></h1>
         <p class="muted" data-t="subtitle"></p>
       </div>
+      <span class="ver" id="version"></span>
     </header>
+
+    <!-- a newer version, checked on opening -->
+    <section class="update" id="updateBox" role="status" hidden>
+      <p id="updateText"></p>
+      <p class="error" id="updateError" role="alert" hidden></p>
+      <div class="row">
+        <button class="primary" id="updateBtn" type="button" data-t="update_now"></button>
+        <button id="updateLater" type="button" data-t="update_later"></button>
+      </div>
+    </section>
 
     <!-- 1. server and account -->
     <section class="card" id="stepConnect">
@@ -96,7 +107,7 @@
     </section>
 
     <footer class="foot muted">
-      <span id="version"></span>
+      <span></span>
       <select id="lang" aria-label="Idioma / Language">
         <option value="es">Español</option>
         <option value="ca">Català</option>

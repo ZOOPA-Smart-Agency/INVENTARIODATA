@@ -1,7 +1,9 @@
 # Tests and builds the app for every system on every push. Each installer is kept as an artifact of the run on its
 # own, not zipped: a .dmg for macOS, the installers and a zip of the command-line tool for Windows and Linux.
 # Pushing a tag such as v0.1.0 also attaches them to a DRAFT release, published by hand on GitHub.
-# Nothing here signs the apps (see README.md, "Unsigned builds").
+# Nothing here signs the apps for macOS or Windows (see README.md, "Unsigned builds"). The update files are signed
+# for the app's own updater (.github/sign.sh, with the secret TAURI_SIGNING_PRIVATE_KEY), and a release also gets
+# latest.json, which the app reads on opening to find a newer version (.github/latest_json.py).
 #
 # File names: Registro-de-equipos_<version>_<system>-<architecture>.<extension>. <version> is the tag's version for
 # releases (0.1.0), otherwise Cargo.toml's version and the run number (0.1.0-build.12).
@@ -34,6 +36,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo test -p inventario-core
+      - name: The app's update check (macOS only; Linux would need the window libraries)
+        if: runner.os == 'macOS'
+        run: cargo test -p inventario-registro
       - name: What this runner reports about itself
         run: cargo run -q -p inventario-registro-cli -- --dry-run
 
@@ -43,6 +48,7 @@ jobs:
     runs-on: macos-latest
     env:
       MACOSX_DEPLOYMENT_TARGET: "10.15"
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
     steps:
       - uses: actions/checkout@v7
       - name: Version for file names
@@ -62,11 +68,25 @@ jobs:
         run: |
           mkdir -p dist
           cp target/universal-apple-darwin/release/bundle/dmg/*.dmg "dist/Registro-de-equipos_${LABEL}_macos-universal.dmg"
+          # what the updater installs: the app itself, compressed
+          tar -czf "dist/Registro-de-equipos_${LABEL}_macos-universal.app.tar.gz" -C target/universal-apple-darwin/release/bundle/macos "Registro de equipos.app"
+      - name: Sign the update file
+        run: bash .github/sign.sh "dist/Registro-de-equipos_${LABEL}_macos-universal.app.tar.gz"
       - uses: actions/upload-artifact@v7
         with:
           path: dist/Registro-de-equipos_${{ env.LABEL }}_macos-universal.dmg
           archive: false
           if-no-files-found: error
+      - uses: actions/upload-artifact@v7
+        with:
+          path: dist/Registro-de-equipos_${{ env.LABEL }}_macos-universal.app.tar.gz
+          archive: false
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v7
+        with:
+          name: signatures-macos
+          path: dist/*.sig
+          if-no-files-found: ignore
 
   windows:
     name: Windows (${{ matrix.arch }})
@@ -82,6 +102,8 @@ jobs:
             target: aarch64-pc-windows-msvc
             bundles: nsis # the MSI builder (WiX 3) cannot make ARM installers
     runs-on: windows-latest
+    env:
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
     steps:
       - uses: actions/checkout@v7
       - name: Version for file names
@@ -109,8 +131,20 @@ jobs:
           if ("${{ matrix.arch }}" -eq "x64") { Copy-Item (Get-Item target/${{ matrix.target }}/release/bundle/msi/*.msi) "dist/$name.msi" }
           # the portable version: the app itself, which needs no installing (its page is built into the .exe)
           Copy-Item target/${{ matrix.target }}/release/inventario-registro.exe "dist/$name-portable.exe"
+          # it must not carry an installer's mark, or it would update by running an installer instead of replacing itself
+          $text = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes("dist/$name-portable.exe"))
+          if (-not $text.Contains('__TAURI_BUNDLE_TYPE_VAR_UNK')) { throw "The portable .exe is marked as an installer" }
           Compress-Archive -Path target/${{ matrix.target }}/release/inventario-registro-cli.exe -DestinationPath "dist/inventario-registro-cli_$($env:LABEL)_windows-${{ matrix.arch }}.zip"
           Get-ChildItem dist
+      - name: Sign the update files
+        run: |
+          shopt -s nullglob # there is no MSI for ARM
+          bash .github/sign.sh dist/Registro-de-equipos_*.exe dist/Registro-de-equipos_*.msi
+      - uses: actions/upload-artifact@v7
+        with:
+          name: signatures-windows-${{ matrix.arch }}
+          path: dist/*.sig
+          if-no-files-found: ignore
       - uses: actions/upload-artifact@v7
         with:
           path: dist/Registro-de-equipos_${{ env.LABEL }}_windows-${{ matrix.arch }}-setup.exe
@@ -145,6 +179,8 @@ jobs:
           - arch: arm64
             runner: ubuntu-22.04-arm
     runs-on: ${{ matrix.runner }}
+    env:
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
     steps:
       - uses: actions/checkout@v7
       - name: Version for file names
@@ -176,6 +212,13 @@ jobs:
           chmod +x "dist/$name.AppImage"
           zip -j "dist/inventario-registro-cli_${LABEL}_linux-${{ matrix.arch }}.zip" target/release/inventario-registro-cli
           ls -la dist
+      - name: Sign the update files
+        run: bash .github/sign.sh "dist/Registro-de-equipos_${LABEL}_linux-${{ matrix.arch }}".{deb,rpm,AppImage}
+      - uses: actions/upload-artifact@v7
+        with:
+          name: signatures-linux-${{ matrix.arch }}
+          path: dist/*.sig
+          if-no-files-found: ignore
       - uses: actions/upload-artifact@v7
         with:
           path: dist/Registro-de-equipos_${{ env.LABEL }}_linux-${{ matrix.arch }}.deb
@@ -205,10 +248,21 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v7
+      - name: The tag matches the app's version
+        run: |
+          # the app compares its own version with latest.json's: they must be the same number, or it would keep
+          # offering the update it already has
+          version=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)
+          [[ "${GITHUB_REF_NAME}" == "v${version}" ]] || { echo "::error::Tag ${GITHUB_REF_NAME} but Cargo.toml says ${version}"; exit 1; }
       - uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true
+      - name: latest.json, for the app's updater
+        run: |
+          python3 .github/latest_json.py dist "${GITHUB_REF_NAME#v}" "https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}"
+          mkdir -p signatures && mv dist/*.sig signatures/ # inside latest.json; not needed as files
       - run: find dist -type f | sort
       - uses: softprops/action-gh-release@v3
         with:

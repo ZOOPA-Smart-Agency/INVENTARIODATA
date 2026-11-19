@@ -44,8 +44,29 @@
       "hardenedRuntime": false
     },
     "windows": {
-      "webviewInstallMode": { "type": "downloadBootstrapper" },
-      "nsis": { "installMode": "both", "languages": ["Spanish", "English", "Catalan"], "displayLanguageSelector": false }
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper"
+      },
+      "nsis": {
+        "installMode": "both",
+        "languages": [
+          "Spanish",
+          "English",
+          "Catalan"
+        ],
+        "displayLanguageSelector": false
+      }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDlCQzIzMEMyQjUzQTg4RkEKUldUNmlEcTF3akRDbXc0TWpQS3dnQXNCUHV3N2E1MHRJS1NobWQ5bDZITlU5QjNWRHBGcVljTVUK",
+      "endpoints": [
+        "https://github.com/ZOOPA-Smart-Agency/INVENTARIODATA/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
     }
   }
 }
